@@ -1,0 +1,90 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core",
+    "crates/io",
+    "crates/augmentations",
+    "crates/pipeline",
+    "crates/python",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Mrinal Jain", "Arpit Gupta", "Animesh Garg"]
+repository = "https://github.com/PAIR-data-platform/data-core-rs"
+homepage = "https://github.com/PAIR-data-platform/data-core-rs"
+readme = "README.md"
+keywords = ["robotics", "lerobot", "dataset", "arrow", "imitation-learning"]
+categories = ["science::robotics"]
+publish = false
+
+[workspace.dependencies]
+# Arrow ecosystem
+arrow = { version = "54", features = ["ffi"] }
+arrow-array = "54"
+arrow-schema = "54"
+parquet = { version = "54", features = ["arrow"] }
+
+# Error handling
+thiserror = "2"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HTTP (Hugging Face Hub downloader). rustls instead of the default
+# native-tls avoids a build dependency on the system OpenSSL headers.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "http2", "charset"] }
+
+# Image processing
+image = "0.25"
+
+# Video decoding (wraps system libav / ffmpeg)
+ffmpeg-next = "7"
+
+# Logging
+tracing = "0.1"
+
+# Testing
+tempfile = "3"
+
+# Parallelism
+rayon = "1.10"
+
+# CLI binary
+[package]
+name = "data-engine-cli"
+description = "Command-line tool for inspecting LeRobot datasets with the data-core engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories = ["science::robotics", "command-line-utilities"]
+publish.workspace = true
+
+[[bin]]
+name = "data-engine"
+path = "src/main.rs"
+
+[dependencies]
+data-core-io = { path = "crates/io" }
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+
+[dev-dependencies]
+# Used by benches/loading_benchmark.rs
+data-core = { path = "crates/core" }
+data-core-augmentations = { path = "crates/augmentations" }
+data-core-pipeline = { path = "crates/pipeline" }
+dirs = "5"
+ffmpeg-next = { workspace = true }
+
+[[bench]]
+name = "loading_benchmark"
+harness = false

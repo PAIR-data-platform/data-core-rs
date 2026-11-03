@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the paper below."
+title: "data-core: a Rust data engine for robot learning datasets"
+type: software
+license: MIT
+repository-code: "https://github.com/PAIR-data-platform/data-core-rs"
+authors:
+  - family-names: Jain
+    given-names: Mrinal
+    affiliation: Georgia Institute of Technology
+  - family-names: Gupta
+    given-names: Arpit
+    affiliation: General Motors
+  - family-names: Garg
+    given-names: Animesh
+    affiliation: Georgia Institute of Technology
+preferred-citation:
+  type: conference-paper
+  title: "An Empirical Study of Data-Loading Bottlenecks (and Non-Bottlenecks) in Robotic Imitation Learning"
+  authors:
+    - family-names: Jain
+      given-names: Mrinal
+    - family-names: Gupta
+      given-names: Arpit
+    - family-names: Garg
+      given-names: Animesh
+  collection-title: "Conference on Robot Learning (CoRL)"
+  year: 2026
+  url: "https://openreview.net/forum?id=Vv1WXMkSTD"

@@ -1,0 +1,87 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "data-core"
+version = "0.1.0"
+description = "Rust data engine for robot learning datasets, with Python bindings"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Mrinal Jain" },
+    { name = "Arpit Gupta" },
+    { name = "Animesh Garg" },
+]
+keywords = [
+    "robotics",
+    "robot-learning",
+    "imitation-learning",
+    "lerobot",
+    "dataloader",
+    "arrow",
+    "rust",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "pyarrow>=14.0",
+    "numpy>=1.24",
+]
+
+[project.urls]
+Homepage = "https://github.com/PAIR-data-platform/data-core-rs"
+Repository = "https://github.com/PAIR-data-platform/data-core-rs"
+Issues = "https://github.com/PAIR-data-platform/data-core-rs/issues"
+Paper = "https://openreview.net/forum?id=Vv1WXMkSTD"
+
+[project.optional-dependencies]
+# data_core.torch, the PyTorch Dataset with LeRobot-style samples
+torch = [
+    "torch>=2.1",
+]
+# Test suite in tests/
+dev = [
+    "pytest>=7.0",
+    # Writes the JPEG fixtures used by some tests; they skip without it.
+    "Pillow>=10.0",
+]
+# benches/, scripts/ and examples/. The paper experiments used lerobot 0.4.4;
+# 0.4.0 is the first release with the LeRobot v3 dataset format, and later
+# minor versions are untested.
+bench = [
+    "lerobot>=0.4,<0.5",
+    "torch>=2.1",
+    "torchcodec>=0.1",
+    "torchvision>=0.16",
+    "Pillow>=10.0",
+    "tqdm",
+    "matplotlib",
+    "tabulate",
+]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+# Mixed layout: the Rust extension is data_core._native, and the Python
+# package in python/data_core re-exports it and adds data_core.torch.
+python-source = "python"
+module-name = "data_core._native"
+manifest-path = "crates/python/Cargo.toml"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

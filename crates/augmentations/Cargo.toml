@@ -1,0 +1,23 @@
+[package]
+name = "data-core-augmentations"
+description = "Augmentation traits and built-in image, action and state augmentations for data-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+publish.workspace = true
+
+[dependencies]
+data-core = { path = "../core" }
+arrow = { workspace = true }
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
+image = { workspace = true }
+serde = { workspace = true }
+rand = "0.9"
+rayon = { workspace = true }

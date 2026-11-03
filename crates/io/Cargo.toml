@@ -1,0 +1,32 @@
+[package]
+name = "data-core-io"
+description = "LeRobot dataset I/O for data-core: Parquet, images, video decoding, lazy loading and Hugging Face Hub downloads"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+publish.workspace = true
+
+[dependencies]
+data-core = { path = "../core" }
+data-core-augmentations = { path = "../augmentations" }
+arrow = { workspace = true }
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
+parquet = { workspace = true }
+image = { workspace = true }
+ffmpeg-next = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+rayon = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { version = "1", features = ["macros", "rt"] }

@@ -1,0 +1,33 @@
+[package]
+name = "data-core-python"
+description = "PyO3 bindings for data-core, built into the data_core._native extension module"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories = ["science::robotics", "api-bindings"]
+publish.workspace = true
+
+[lib]
+# The Python extension is documented through python/data_core/_native.pyi; its lib name
+# collides with crates/core in `cargo doc --workspace`.
+doc = false
+name = "data_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+data-core = { path = "../core" }
+data-core-io = { path = "../io" }
+data-core-augmentations = { path = "../augmentations" }
+data-core-pipeline = { path = "../pipeline" }
+pyo3 = { version = "0.23", features = ["extension-module"] }
+pyo3-arrow = "0.7"
+arrow = { workspace = true }
+arrow-array = { workspace = true }
+serde_json = { workspace = true }
+image = { workspace = true }
+rayon = { workspace = true }

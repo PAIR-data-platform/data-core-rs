@@ -1,0 +1,846 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data-Loading (Non-)Bottlenecks in Robot Learning</title>
+<meta name="description" content="Project page for the CoRL 2026 paper An Empirical Study of Data-Loading Bottlenecks (and Non-Bottlenecks) in Robotic Imitation Learning, with the data-core engine and scripts.">
+<meta property="og:title" content="An Empirical Study of Data-Loading Bottlenecks (and Non-Bottlenecks) in Robotic Imitation Learning">
+<meta property="og:description" content="In the LeRobot training runs we profiled, the data path takes 1 to 3.5% of each training step. Faster loaders do not shorten training; unindexed video seeking does lengthen it.">
+<meta property="og:type" content="website">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --card: #ffffff;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #6f6d68;
+  --axis-text: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --link: #1c5cab;
+  --s1: #2a78d6;
+  --s2: #eb6834;
+  --base-bar: #898781;
+  --chip: #f0efec;
+  --code-bg: #f3f2ee;
+  --figure-bg: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --card: #1a1a19;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --muted: #a3a29b;
+    --axis-text: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --link: #86b6ef;
+    --s1: #3987e5;
+    --s2: #d95926;
+    --base-bar: #7d7b75;
+    --chip: #262624;
+    --code-bg: #141413;
+    --figure-bg: #ffffff;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --card: #1a1a19;
+  --ink: #f0efec;
+  --ink-2: #c3c2b7;
+  --muted: #a3a29b;
+  --axis-text: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --link: #86b6ef;
+  --s1: #3987e5;
+  --s2: #d95926;
+  --base-bar: #7d7b75;
+  --chip: #262624;
+  --code-bg: #141413;
+  --figure-bg: #ffffff;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+a { color: var(--link); text-underline-offset: 2px; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.88em; }
+code { background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; overflow-x: auto; line-height: 1.5; margin: 0; }
+pre code { background: none; padding: 0; font-size: 0.86rem; }
+
+.wrap { max-width: 920px; margin: 0 auto; padding: 0 20px; }
+@media (max-width: 480px) { .wrap { padding: 0 16px; } }
+
+/* Header */
+.hero { padding: 56px 0 36px; text-align: center; }
+.venue { display: inline-block; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); background: var(--chip); border: 1px solid var(--border); padding: 3px 10px; border-radius: 999px; margin: 0 0 18px; }
+.hero h1 { font-size: clamp(1.6rem, 4.2vw, 2.45rem); line-height: 1.2; letter-spacing: -0.01em; margin: 0 auto 22px; max-width: 820px; font-weight: 700; text-wrap: balance; }
+.authors { font-size: 1.08rem; margin: 0 0 4px; }
+.authors span { white-space: nowrap; margin: 0 10px; }
+.affil { color: var(--ink-2); font-size: 0.95rem; margin: 0 0 24px; }
+.affil span { white-space: nowrap; margin: 0 10px; }
+.links { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px; border-radius: 999px; background: var(--ink); color: var(--page); text-decoration: none; font-weight: 600; font-size: 0.95rem; }
+.btn svg { width: 17px; height: 17px; }
+.btn.secondary { background: var(--card); color: var(--ink); border: 1px solid var(--border); }
+.btn:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+
+/* Sections */
+section { padding: 36px 0; border-top: 1px solid var(--border); }
+section h2 { font-size: 1.5rem; line-height: 1.25; margin: 0 0 14px; letter-spacing: -0.005em; }
+section h3 { font-size: 1.05rem; margin: 28px 0 8px; }
+p { margin: 0 0 14px; }
+.lead { font-size: 1.12rem; color: var(--ink); }
+.kicker { font-size: 0.8rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+
+/* Stat tiles */
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 22px 0 6px; }
+@media (max-width: 760px) { .tiles { grid-template-columns: 1fr; } }
+.tile { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 18px 16px; }
+.tile .label { font-size: 0.88rem; color: var(--ink-2); margin: 0 0 6px; }
+.tile .value { font-size: 2.1rem; font-weight: 650; line-height: 1.1; margin: 0 0 8px; }
+.tile .note { font-size: 0.88rem; color: var(--ink-2); margin: 0; line-height: 1.45; }
+
+/* Formula */
+.formula { display: flex; align-items: center; justify-content: center; gap: 14px; font-size: 1.25rem; margin: 18px 0 20px; padding: 16px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; flex-wrap: wrap; }
+.frac { display: inline-flex; flex-direction: column; align-items: center; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.02rem; }
+.frac .num { padding: 0 6px 4px; border-bottom: 1.5px solid var(--ink); }
+.frac .den { padding: 4px 6px 0; }
+
+/* Chart cards */
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 18px 14px; margin: 18px 0; }
+.card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.card-title { font-weight: 650; font-size: 1rem; margin: 0; }
+.card-sub { font-size: 0.88rem; color: var(--ink-2); margin: 2px 0 0; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.85rem; color: var(--ink-2); margin: 8px 0 4px; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.chart { width: 100%; position: relative; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.caption { font-size: 0.88rem; color: var(--ink-2); margin: 10px 0 0; }
+.two-up { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 760px) { .two-up { grid-template-columns: 1fr; } }
+.two-up .card { margin: 0; }
+
+/* Segmented control */
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; padding: 2px; background: var(--page); }
+.seg button { border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 0.83rem; padding: 4px 12px; border-radius: 999px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: 0 0 0 1px var(--border); font-weight: 600; }
+
+/* Data tables */
+details { margin-top: 10px; }
+summary { cursor: pointer; font-size: 0.85rem; color: var(--ink-2); }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { font-weight: 600; color: var(--ink-2); font-size: 0.84rem; }
+td { overflow-wrap: anywhere; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.table-wrap { overflow-x: auto; }
+.table-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 6px 8px; margin: 18px 0; }
+.table-card table tr:last-child td { border-bottom: 0; }
+.table-cap { font-size: 0.88rem; color: var(--ink-2); margin: 8px 2px 4px; }
+
+/* Paper figures */
+figure { margin: 18px 0; }
+figure .img { background: var(--figure-bg); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+figure img { display: block; width: 100%; height: auto; margin: 0 auto; }
+figure.narrow .img img { max-width: 440px; }
+figcaption { font-size: 0.88rem; color: var(--ink-2); margin: 10px 2px 0; }
+figcaption b { color: var(--ink); font-weight: 600; }
+
+/* Calculator */
+.calc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 12px 0 8px; }
+@media (max-width: 640px) { .calc-grid { grid-template-columns: 1fr; } }
+.field label { display: block; font-size: 0.85rem; color: var(--ink-2); margin-bottom: 4px; }
+.field input[type="number"] { width: 100%; font: inherit; font-variant-numeric: tabular-nums; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--axis); background: var(--page); color: var(--ink); }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+.presets button { font: inherit; font-size: 0.8rem; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--page); color: var(--ink-2); cursor: pointer; }
+.presets button[aria-pressed="true"] { background: var(--ink); color: var(--page); border-color: var(--ink); }
+.slider-row { display: flex; align-items: center; gap: 12px; margin: 6px 0 4px; }
+.slider-row input[type="range"] { flex: 1; accent-color: var(--s1); }
+.slider-row output { font-variant-numeric: tabular-nums; min-width: 64px; text-align: right; font-weight: 600; }
+.readouts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0 6px; }
+@media (max-width: 640px) { .readouts { grid-template-columns: 1fr; } }
+.readout { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--page); }
+.readout .label { font-size: 0.8rem; color: var(--ink-2); }
+.readout .value { font-size: 1.45rem; font-weight: 650; line-height: 1.25; }
+.readout .sub { font-size: 0.8rem; color: var(--ink-2); }
+
+/* Engine list */
+.points { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 16px 0; }
+@media (max-width: 640px) { .points { grid-template-columns: 1fr; } }
+.point { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+.point h4 { margin: 0 0 4px; font-size: 0.98rem; }
+.point p { margin: 0; font-size: 0.92rem; color: var(--ink-2); }
+
+/* Tooltip */
+.tip { position: fixed; pointer-events: none; z-index: 10; background: var(--card); color: var(--ink); border: 1px solid var(--border); box-shadow: 0 4px 16px rgba(0,0,0,0.12); border-radius: 8px; padding: 8px 10px; font-size: 0.82rem; line-height: 1.4; opacity: 0; transition: opacity 80ms; max-width: 260px; }
+.tip .t-head { color: var(--ink-2); margin-bottom: 4px; }
+.tip .t-row { display: flex; align-items: center; gap: 8px; }
+.tip .t-row b { font-variant-numeric: tabular-nums; }
+.tip .key { display: inline-block; width: 12px; height: 3px; border-radius: 2px; }
+.tip .t-name { color: var(--ink-2); }
+
+.bib-wrap { position: relative; }
+.copy { position: absolute; top: 8px; right: 8px; font: inherit; font-size: 0.8rem; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: var(--ink-2); cursor: pointer; }
+footer { padding: 28px 0 48px; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.85rem; }
+footer p { margin: 0 0 6px; }
+</style>
+</head>
+<body>
+
+<header class="hero wrap">
+  <p class="venue">CoRL 2026</p>
+  <h1>An Empirical Study of Data-Loading Bottlenecks (and Non-Bottlenecks) in Robotic Imitation Learning</h1>
+  <p class="authors"><span>Mrinal Jain<sup>1</sup></span><span>Arpit Gupta<sup>2</sup></span><span>Animesh Garg<sup>1</sup></span></p>
+  <p class="affil"><span><sup>1</sup>Georgia Institute of Technology</span><span><sup>2</sup>General Motors</span></p>
+  <nav class="links" aria-label="Paper and code">
+    <a class="btn" href="https://openreview.net/pdf?id=Vv1WXMkSTD">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></svg>
+      Paper (PDF)</a>
+    <a class="btn" href="https://github.com/PAIR-data-platform/data-core-rs">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"/></svg>
+      Code</a>
+    <a class="btn secondary" href="https://openreview.net/forum?id=Vv1WXMkSTD">OpenReview</a>
+    <a class="btn secondary" href="#citation">BibTeX</a>
+  </nav>
+</header>
+
+<main>
+<section class="wrap" aria-labelledby="tldr">
+  <p class="kicker">Summary</p>
+  <h2 id="tldr">Faster data loaders did not make training faster</h2>
+  <p class="lead">Robot learning teams invest in faster data loading on the assumption that it limits training speed. We tested that assumption by profiling end-to-end policy training in LeRobot, with ACT and SmolVLA, on a consumer and a server GPU, against a Rust data engine we built to be as fast as we could make it.</p>
+  <div class="tiles">
+    <div class="tile">
+      <p class="label">Share of each training step spent waiting for data</p>
+      <p class="value">1 to 3.5%</p>
+      <p class="note">Across resolutions from 84×84 to 480×640 and batch sizes from 8 to 64. Model compute takes the rest.</p>
+    </div>
+    <div class="tile">
+      <p class="label">Isolated loader speedup over torchcodec</p>
+      <p class="value">3.94×</p>
+      <p class="note">End-to-end training wall-clock with our engine: 324 ± 1 s against 326 ± 4 s, within run-to-run noise.</p>
+    </div>
+    <div class="tile">
+      <p class="label">Data-path ratio with PyAV seeking in AV1 video</p>
+      <p class="value">≈488%</p>
+      <p class="note">The one real bottleneck we found, caused by unindexed sequential seeks rather than by loading itself.</p>
+    </div>
+  </div>
+</section>
+
+<section class="wrap" aria-labelledby="metric">
+  <p class="kicker">Method</p>
+  <h2 id="metric">One ratio tells you whether the loader matters</h2>
+  <p>Each optimization step runs two paths at once. The <b>data path</b> decodes frames, applies augmentation and copies tensors to the GPU. The <b>compute path</b> runs the forward pass, loss, backward pass and optimizer update. DataLoader workers prepare batch <i>t</i>+1 while the GPU works on batch <i>t</i>, so the data path only costs wall-clock time when it cannot be hidden behind compute.</p>
+  <p>LeRobot already logs both sides of this every few steps: <code>data_s</code>, the time the trainer blocks waiting for a batch, and <code>updt_s</code>, the time of the compute path. Our metric is their ratio:</p>
+  <div class="formula" role="img" aria-label="r equals data_s divided by updt_s">
+    <span><i>r</i> =</span>
+    <span class="frac"><span class="num">data_s</span><span class="den">updt_s</span></span>
+  </div>
+  <p>Amdahl's law turns <i>r</i> into a hard limit. Even an infinitely fast loader can speed up training by at most a factor of 1 + <i>r</i>. At <i>r</i> = 3.5% that ceiling is 3.5%, about the size of run-to-run variance in training time.</p>
+
+  <div class="card" id="step-card">
+    <div class="card-head">
+      <div>
+        <p class="card-title">Where a training step goes</p>
+        <p class="card-sub">Steady-state time per step, mean over 100-step windows</p>
+      </div>
+      <div class="seg" role="group" aria-label="Rows shown">
+        <button type="button" data-mode="all" aria-pressed="true">All configurations</button>
+        <button type="button" data-mode="std" aria-pressed="false">Standard only</button>
+      </div>
+    </div>
+    <div class="legend" aria-hidden="true">
+      <span><i style="background: var(--s1)"></i>Compute path (updt_s)</span>
+      <span><i style="background: var(--s2)"></i>Data wait (data_s)</span>
+    </div>
+    <div class="chart" id="step-chart"></div>
+    <p class="caption">In every standard configuration the data wait is a sliver at the end of the bar; switch to <i>Standard only</i> to see it at a readable scale. The PyAV row is the exception, explained further down. Values are from Table 1 of the paper.</p>
+    <details>
+      <summary>Show the numbers</summary>
+      <div class="table-wrap"><table id="step-table">
+        <thead><tr><th>Configuration</th><th class="num">data_s (ms)</th><th class="num">updt_s (ms)</th><th class="num">r</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </details>
+  </div>
+
+  <figure class="narrow">
+    <div class="img"><img src="assets/data_path_ratio_dist.png" alt="Box plots of the data-path ratio per 100-step window for four configurations, all below 3.5 percent and under a 5 percent reference line" loading="lazy" width="1180" height="745"></div>
+    <figcaption><b>Per-window distribution of r.</b> Every configuration stays below the 5% practical threshold (dashed line).</figcaption>
+  </figure>
+</section>
+
+<section class="wrap" aria-labelledby="isolated">
+  <p class="kicker">Finding</p>
+  <h2 id="isolated">Isolated speedups vanish in the training loop</h2>
+  <p>On a 4-camera 480×640 dataset, our <code>arrow_uint8</code> pipeline loads samples 3.94× faster than torchcodec and 6.95× faster than PyAV in a single process. A warm frame in the copy-on-write cache is served at about 625k samples/s, around 10<sup>6</sup>× faster than a cold disk decode. In the training loop, measured over three seeds, none of this changes wall-clock time beyond run-to-run noise.</p>
+  <div class="legend" aria-hidden="true">
+    <span><i style="background: var(--s1)"></i>data-core (ours)</span>
+    <span><i style="background: var(--base-bar)"></i>Baselines</span>
+  </div>
+  <div class="two-up">
+    <div class="card">
+      <p class="card-title">Isolated loading throughput</p>
+      <p class="card-sub">Samples/s, single process, no augmentation (higher is faster)</p>
+      <div class="chart" id="iso-chart"></div>
+    </div>
+    <div class="card">
+      <p class="card-title">Training-loop wall-clock</p>
+      <p class="card-sub">Seconds, MimicGen Coffee 84×84, batch 64 (lower is faster)</p>
+      <div class="chart" id="wall-chart"></div>
+    </div>
+  </div>
+  <p class="caption">Left: Table 2 of the paper. Right: Table 3; mean ± std over seeds 42 to 44 where three seeds are marked. The wall-clock excludes the one-time pre-decode (about 50 s per 100 episodes), which would only make our backend slower.</p>
+  <details>
+    <summary>Show the numbers</summary>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Backend</th><th class="num">Isolated, no-aug (samples/s)</th><th class="num">Isolated, heavy-aug (samples/s)</th></tr></thead>
+      <tbody>
+        <tr><td><code>arrow_uint8</code> (ours, /255 on GPU)</td><td class="num">135.5</td><td class="num">48.1</td></tr>
+        <tr><td><code>arrow_f32</code> (ours, /255 on CPU)</td><td class="num">not measured</td><td class="num">25.5</td></tr>
+        <tr><td>torchcodec (baseline)</td><td class="num">34.4</td><td class="num">26.3</td></tr>
+        <tr><td>PyAV</td><td class="num">19.5</td><td class="num">16.0</td></tr>
+      </tbody>
+    </table>
+    <table style="margin-top: 10px">
+      <thead><tr><th>Backend</th><th class="num">Training-loop wall-clock</th><th class="num">vs torchcodec</th></tr></thead>
+      <tbody>
+        <tr><td>torchcodec (baseline, 3 seeds)</td><td class="num">326 ± 4 s</td><td class="num">baseline</td></tr>
+        <tr><td>CoW raw-pixel (ours, 3 seeds)</td><td class="num">324 ± 1 s</td><td class="num">−0.6%</td></tr>
+        <tr><td><code>arrow_uint8_jpeg</code> (ours, 1 seed)</td><td class="num">329 s</td><td class="num">+0.9%</td></tr>
+      </tbody>
+    </table></div>
+  </details>
+  <p style="margin-top: 16px">Placement matters too. <code>arrow_f32</code> moves the float conversion and /255 normalization to the CPU, which quadruples host memory and PCIe transfer volume. Under heavy augmentation it nearly halves isolated throughput and drops below torchcodec.</p>
+  <figure class="narrow">
+    <div class="img"><img src="assets/wins_evaporate.png" alt="Slope chart: warm-cache access at about 5.7 million times and the arrow_uint8 pipeline at 3.94 times faster in isolation both fall to 1.0 times in end-to-end training wall-clock" loading="lazy" width="1010" height="763"></div>
+    <figcaption><b>Both isolated wins collapse.</b> Warm-cache access (about 10<sup>6</sup>×) and the <code>arrow_uint8</code> pipeline (3.94×) both give no measurable speedup in end-to-end training wall-clock.</figcaption>
+  </figure>
+</section>
+
+<section class="wrap" aria-labelledby="pyav">
+  <p class="kicker">Finding</p>
+  <h2 id="pyav">The real bottleneck is unindexed video seeking</h2>
+  <p>PyAV is the only configuration where the data path bounds training. It seeks sequentially, O(N), through AV1 video that has no frame-level index. On MimicGen Coffee this gives <code>data_s</code> ≈ 0.81 s against <code>updt_s</code> = 0.166 s, so <i>r</i> ≈ 488%, and training time grows from 5.8 to 32.2 minutes (5.6× slower). At batch size 32 the gap widens to 15.1×, which is behind LeRobot's switch to torchcodec.</p>
+  <p>This is a property of the decoder's seek path, not of the LeRobot format. The same AV1 files read through torchcodec's indexed seeking give <i>r</i> = 1.1%. Pair a storage format with a decoder that supports index-based random access and severe data bottlenecks do not arise.</p>
+  <figure>
+    <div class="img"><img src="assets/gpu_utilization.png" alt="Two bar charts of GPU idle fraction. Left: four standard configurations between 1.1 and 3.4 percent. Right: the same plus PyAV at 83 percent, above an unprefetched HDF5 baseline line at 37 percent" loading="lazy" width="1940" height="735"></div>
+    <figcaption><b>Per-step GPU-idle (data-wait) fraction.</b> (a) Standard configurations show minimal data starvation (1.1 to 3.4%). (b) PyAV sequential decoding inflates the idle fraction to about 83%; the dashed line marks an unprefetched HDF5 baseline (37% idle).</figcaption>
+  </figure>
+</section>
+
+<section class="wrap" aria-labelledby="aug">
+  <p class="kicker">Finding</p>
+  <h2 id="aug">Online augmentation stays cheap</h2>
+  <p>Augmentation adds at most 0.3 percentage points to <i>r</i>. Our fused pipeline applies color jitter and cropping to integer pixels in one Rust pass before tensors are built. It is 1.83× faster than torchvision v2 in isolation under heavy augmentation (48.1 against 26.3 samples/s) and matches it in end-to-end training.</p>
+  <div class="table-card">
+    <p class="table-cap">Data-path ratio <i>r</i>, MimicGen Coffee 84×84, batch 64 (Table 4)</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Augmentation pathway</th><th class="num">no-aug</th><th class="num">+aug</th></tr></thead>
+      <tbody>
+        <tr><td>torchcodec (torchvision v2)</td><td class="num">1.13%</td><td class="num">1.29%</td></tr>
+        <tr><td>CoW (Rust-IR fused)</td><td class="num">1.23%</td><td class="num">1.49%</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</section>
+
+<section class="wrap" aria-labelledby="vla">
+  <p class="kicker">Finding</p>
+  <h2 id="vla">The result holds for a VLA on a server GPU</h2>
+  <p>To check that this is not an artifact of a small ACT model on consumer hardware, we trained SmolVLA on LIBERO on an L40S and evaluated on LIBERO-10. GPU utilization is the same within 1.3 percentage points across all four backend configurations. The remaining idle time comes from Python host overhead and periodic evaluation rollouts, not from data stalls: the utilization drops in the multi-hour trace line up with checkpointing and rollouts.</p>
+  <div class="table-card">
+    <p class="table-cap">SmolVLA, L40S: NVML GPU duty cycle (Table 5)</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Backend</th><th class="num">GPU util</th><th class="num">Memory used</th></tr></thead>
+      <tbody>
+        <tr><td>LeRobot (torchcodec)</td><td class="num">60%</td><td class="num">11.5 / 48 GB</td></tr>
+        <tr><td>LeRobot + aug</td><td class="num">59%</td><td class="num">11.4 / 48 GB</td></tr>
+        <tr><td>Rust (data_core)</td><td class="num">59%</td><td class="num">11.5 / 48 GB</td></tr>
+        <tr><td>Rust + aug</td><td class="num">60%</td><td class="num">11.5 / 48 GB</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+  <figure>
+    <div class="img"><img src="assets/smolvla_util_timeseries.png" alt="GPU utilization over about seven hours of SmolVLA training for torchcodec and the Rust backend, both steady near 60 percent with periodic drops" loading="lazy" width="1500" height="820"></div>
+    <figcaption><b>NVML utilization over a multi-hour run,</b> torchcodec and Rust overlaid: steady at about 59 to 61% with periodic drops that are evaluation and checkpointing (simulator rollouts), not data stalls.</figcaption>
+  </figure>
+</section>
+
+<section class="wrap" aria-labelledby="calc">
+  <p class="kicker">Try it</p>
+  <h2 id="calc">How much could a faster loader save on your run?</h2>
+  <p>Read <code>data_s</code> and <code>updt_s</code> off your <code>lerobot-train</code> log, skipping the first two logged windows as warm-up, and enter their means below. Or start from one of the configurations in the paper.</p>
+  <div class="card">
+    <div class="presets" role="group" aria-label="Configurations from the paper" id="presets"></div>
+    <div class="calc-grid">
+      <div class="field"><label for="in-data">Mean data_s (ms)</label><input id="in-data" type="number" min="0" step="0.1" inputmode="decimal"></div>
+      <div class="field"><label for="in-updt">Mean updt_s (ms)</label><input id="in-updt" type="number" min="0.1" step="0.1" inputmode="decimal"></div>
+    </div>
+    <div class="field"><label for="in-k">Loader speedup</label></div>
+    <div class="slider-row">
+      <input id="in-k" type="range" min="0" max="3" step="0.01" value="1" aria-describedby="out-k">
+      <output id="out-k" for="in-k">10×</output>
+    </div>
+    <div class="readouts" aria-live="polite">
+      <div class="readout"><div class="label">Data-path ratio r</div><div class="value" id="r-val">-</div><div class="sub" id="r-sub">&nbsp;</div></div>
+      <div class="readout"><div class="label">Training speedup with this loader</div><div class="value" id="s-val">-</div><div class="sub" id="s-sub">&nbsp;</div></div>
+      <div class="readout"><div class="label">Ceiling (infinitely fast loader)</div><div class="value" id="c-val">-</div><div class="sub" id="c-sub">&nbsp;</div></div>
+    </div>
+    <div class="legend" aria-hidden="true"><span><i style="background: var(--s1)"></i>Overall training speedup</span></div>
+    <div class="chart" id="amdahl-chart"></div>
+    <p class="caption">Overall speedup S(k) = (1 + r) / (1 + r / k) for a loader that is k× faster, the same model as the paper's Amdahl envelope below. As k grows, S approaches 1 + r. Presets use the ratios reported in the paper; the rounded means shown in the inputs can differ from them in the last digit.</p>
+  </div>
+  <figure>
+    <div class="img"><img src="assets/amdahl_envelope.png" alt="Two panels of overall wall-clock speedup against data-loader speedup. Left: measured ratios between 1.2 and 3.5 percent stay under 1.035. Right: the PyAV regime reaches about 5.9 times" loading="lazy" width="1840" height="740"></div>
+    <figcaption><b>The Amdahl envelope from the paper.</b> (a) At the measured ratios (1.0 to 3.5%), a 100× loader speedup gives at most 3.5% overall wall-clock improvement. (b) Real headroom (about 5.9×) appears only in the PyAV decoding regime.</figcaption>
+  </figure>
+</section>
+
+<section class="wrap" aria-labelledby="cache">
+  <p class="kicker">Where to look instead</p>
+  <h2 id="cache">Feature caching targets the compute path</h2>
+  <p>If the loader is not the limit, the useful target is <code>updt_s</code>. Its largest repeated cost is the per-camera visual backbone, which reprocesses the same frames every epoch. We cached the outputs of a frozen ResNet-18 and trained the ACT action head from the cache.</p>
+  <div class="tiles">
+    <div class="tile"><p class="label">Faster training from cached features</p><p class="value">1.3 to 1.5×</p><p class="note">Aloha, 40 episodes: 89.1 → 61.6 s. Coffee, 80 episodes: 68.7 → 51.9 s. Same frozen backbone run online as the baseline.</p></div>
+    <div class="tile"><p class="label">Further speedup from pooled features</p><p class="value">2.5×</p><p class="note">Pooled instead of spatial-map features on aloha: 61.6 → 24.6 s.</p></div>
+    <div class="tile"><p class="label">Smaller cache with pooled features</p><p class="value">47.5×</p><p class="note">11.05 GB → 232.5 MB on aloha, 40 episodes.</p></div>
+  </div>
+  <p style="margin-top: 14px">The cache is faithful: the same head trained on cached features and on the identical backbone run online reaches matching train L1 (0.0623 against 0.0624). In 25 closed-loop MimicGen rollouts after 10k steps, both the cached policy and a stock LeRobot ACT baseline score 0/25, so the failure comes from the short training budget rather than from caching. Feature caching is a validated systems lever whose policy-level benefit remains to be shown at a budget where the uncached baseline succeeds.</p>
+</section>
+
+<section class="wrap" aria-labelledby="engine">
+  <p class="kicker">The code</p>
+  <h2 id="engine">data-core: the engine behind the measurements</h2>
+  <p>To give data loading its best case, we built a data engine in Rust and released it with the paper. It reads LeRobot v2 and v3 datasets, decodes video once with FFmpeg into Apache Arrow buffers, and hands samples to PyTorch.</p>
+  <figure>
+    <div class="img"><img src="assets/data_lifecycle.png" alt="Three-stage diagram. Stage 1: robotics data on disk in LeRobot v3 is decoded with FFmpeg into an immutable Arrow intermediate representation in the main process. Stage 2: forked workers share the representation through copy-on-write and run augmentations in parallel with Rayon to produce a uint8 tensor. Stage 3: the GPU converts to float, divides by 255 and feeds the policy" loading="lazy" width="931" height="515"></div>
+    <figcaption><b>The data path with the <code>arrow_uint8</code> strategy.</b> Data is preloaded into an intermediate representation (stage 1), worker processes are forked (stage 2), and data is normalized on the GPU (stage 3).</figcaption>
+  </figure>
+  <div class="points">
+    <div class="point"><h4>Arrow intermediate representation</h4><p>Episodes are decoded once into immutable Arrow columns. Reading a frame is an O(1) pointer lookup, and bytes reach PyTorch without serialization.</p></div>
+    <div class="point"><h4>Copy-on-write shared cache</h4><p>The parent process decodes everything before DataLoader workers fork. Workers share one copy of the decoded data and never call FFmpeg, which is not fork-safe.</p></div>
+    <div class="point"><h4>Three materialization strategies</h4><p><code>arrow_f32</code> normalizes on the CPU, <code>arrow_uint8</code> sends integers and normalizes on the GPU, and <code>arrow_uint8_jpeg</code> keeps JPEG bytes in the cache to save memory and decodes them in Rust on access.</p></div>
+    <div class="point"><h4>Fused augmentation in Rust</h4><p>Color jitter, cropping, flips and noise run as a single parallel pass over integer pixels, consistent across the frames of a sample window.</p></div>
+  </div>
+  <h3>Install and load a dataset</h3>
+  <pre><code>git clone https://github.com/PAIR-data-platform/data-core-rs.git
+cd data-core-rs
+python3 -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install "maturin[patchelf]"
+maturin develop --release</code></pre>
+  <pre style="margin-top: 10px"><code>from data_core import LazyDataset
+
+ds = LazyDataset.open("/path/to/lerobot/dataset")   # reads metadata only
+frame = ds[42]                                       # decodes on demand</code></pre>
+  <p style="margin-top: 14px">The build needs Rust and the FFmpeg development libraries; see the <a href="https://github.com/PAIR-data-platform/data-core-rs#installation">README</a> for requirements. The repository also contains the training, benchmark and rollout scripts behind each table, and the <code>lerobot-train</code> runs use our <a href="https://github.com/PAIR-data-platform/lerobot">LeRobot fork</a>.</p>
+</section>
+
+<section class="wrap" aria-labelledby="setup">
+  <p class="kicker">Setup</p>
+  <h2 id="setup">Experimental setup</h2>
+  <div class="table-card">
+    <div class="table-wrap"><table>
+      <tbody>
+        <tr><th>Hardware</th><td>RTX 4070 Ti Super (16 GB) with 32 GB RAM for the ACT runs; L40S (48 GB) for SmolVLA. 32 CPU cores on both.</td></tr>
+        <tr><th>Datasets</th><td><code>mineral/lerobot_mimicgen_coffee_d0</code> (84×84, 2 cameras, 1000 episodes, AV1, 20 fps), <code>lerobot/aloha_static_coffee</code> (480×640, 4 cameras, 50 episodes, AV1, 50 fps), LIBERO-10.</td></tr>
+        <tr><th>Policies</th><td>ACT with a ResNet-18 backbone, 2,000-step timing runs, batch size 8 to 64; a smaller ACT variant to probe a cheaper model. SmolVLA with a SmolVLM2-500M backbone, batch size 16.</td></tr>
+        <tr><th>Loader</th><td>4 DataLoader workers, prefetch factor 2. GPU utilization from NVML sampled every 20 ms.</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</section>
+
+<section class="wrap" aria-labelledby="citation">
+  <h2 id="citation">Citation</h2>
+  <div class="bib-wrap">
+    <button class="copy" type="button" id="copy-bib">Copy</button>
+<pre><code id="bibtex">@inproceedings{jain2026dataloading,
+  title     = {An Empirical Study of Data-Loading Bottlenecks (and Non-Bottlenecks) in Robotic Imitation Learning},
+  author    = {Jain, Mrinal and Gupta, Arpit and Garg, Animesh},
+  booktitle = {Conference on Robot Learning (CoRL)},
+  year      = {2026},
+  url       = {https://openreview.net/forum?id=Vv1WXMkSTD}
+}</code></pre>
+  </div>
+</section>
+</main>
+
+<footer class="wrap">
+  <p>We thank the members of the People, AI, and Robotics (PAIR) Lab for their insights, discussions and support.</p>
+  <p>Code released under the MIT license at <a href="https://github.com/PAIR-data-platform/data-core-rs">PAIR-data-platform/data-core-rs</a>.</p>
+</footer>
+
+<div class="tip" id="tip" role="tooltip"></div>
+
+<script>
+(function () {
+  "use strict";
+  var NS = "http://www.w3.org/2000/svg";
+  var tip = document.getElementById("tip");
+
+  function svgEl(tag, attrs, parent) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function text(parent, x, y, str, attrs) {
+    var t = svgEl("text", Object.assign({ x: x, y: y }, attrs || {}), parent);
+    t.textContent = str;
+    return t;
+  }
+  // Bar with a 4px rounded data end, square at the baseline.
+  function barPath(x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    return "M" + x + "," + y + "h" + (w - r) + "a" + r + "," + r + " 0 0 1 " + r + "," + r +
+      "v" + (h - 2 * r) + "a" + r + "," + r + " 0 0 1 " + (-r) + "," + r + "h" + (r - w) + "z";
+  }
+  function niceTicks(max, count) {
+    var raw = max / count, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    var step = [1, 2, 2.5, 5, 10].map(function (m) { return m * mag; }).find(function (s) { return s >= raw; });
+    var ticks = [];
+    for (var v = 0; v <= max + 1e-9; v += step) ticks.push(+v.toFixed(10));
+    return ticks;
+  }
+
+  // Tooltip: rows are [color or null, value, name]; text goes in via textContent.
+  function showTip(evt, head, rows) {
+    tip.replaceChildren();
+    if (head) { var h = document.createElement("div"); h.className = "t-head"; h.textContent = head; tip.appendChild(h); }
+    rows.forEach(function (r) {
+      var row = document.createElement("div"); row.className = "t-row";
+      if (r[0]) { var k = document.createElement("span"); k.className = "key"; k.style.background = r[0]; row.appendChild(k); }
+      var b = document.createElement("b"); b.textContent = r[1]; row.appendChild(b);
+      var n = document.createElement("span"); n.className = "t-name"; n.textContent = r[2]; row.appendChild(n);
+      tip.appendChild(row);
+    });
+    tip.style.opacity = "1";
+    moveTip(evt);
+  }
+  function moveTip(evt) {
+    var x = evt.clientX, y = evt.clientY;
+    if (x === undefined) {
+      var rect = evt.target.getBoundingClientRect();
+      x = rect.left + rect.width / 2; y = rect.top;
+    }
+    var w = tip.offsetWidth, h = tip.offsetHeight;
+    var left = Math.min(x + 14, window.innerWidth - w - 8);
+    var top = y - h - 12 < 8 ? y + 16 : y - h - 12;
+    tip.style.left = Math.max(8, left) + "px";
+    tip.style.top = top + "px";
+  }
+  function hideTip() { tip.style.opacity = "0"; }
+
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+  function onResize(el, fn) {
+    var last = 0;
+    new ResizeObserver(function (entries) {
+      var w = Math.round(entries[0].contentRect.width);
+      if (w && w !== last) { last = w; fn(w); }
+    }).observe(el);
+  }
+  var redraws = [];
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () { redraws.forEach(function (f) { f(); }); });
+
+  // ---------- Chart 1: step-time breakdown (Table 1) ----------
+  var steps = [
+    { name: "Coffee 84×84, bs 64, torchcodec", data: 1.9, dsd: 1.5, updt: 167.6, usd: 0.8, r: "1.13%" },
+    { name: "Coffee 84×84, bs 64, CoW (ours)", data: 2.1, dsd: 1.1, updt: 167.6, usd: 0.6, r: "1.23%" },
+    { name: "Aloha 480×640, bs 8, torchcodec", data: 6.9, dsd: 0.2, updt: 311.1, usd: 3.3, r: "2.23%" },
+    { name: "Aloha 480×640, bs 16, smaller ACT", data: 12.8, dsd: 0.4, updt: 367.8, usd: 5.9, r: "3.49%" },
+    { name: "Coffee 84×84, bs 64, PyAV", data: 810, updt: 166, approx: true, r: "488%" }
+  ];
+  (function fillStepTable() {
+    var tb = document.querySelector("#step-table tbody");
+    steps.forEach(function (s) {
+      var tr = document.createElement("tr");
+      [s.name,
+       s.approx ? "≈" + s.data : s.data.toFixed(1) + " ± " + s.dsd.toFixed(1),
+       s.approx ? "≈" + s.updt : s.updt.toFixed(1) + " ± " + s.usd.toFixed(1),
+       (s.approx ? "≈" : "") + s.r].forEach(function (v, i) {
+        var td = document.createElement("td"); td.textContent = v; if (i) td.className = "num"; tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+  })();
+
+  var stepMode = "all";
+  var stepEl = document.getElementById("step-chart");
+  function drawSteps(width) {
+    width = width || stepEl.clientWidth;
+    var rows = stepMode === "all" ? steps : steps.slice(0, 4);
+    var maxV = stepMode === "all" ? 1000 : 400;
+    var padL = 0, padR = 92, rowH = 54, barH = 18, top = 4, axisH = 30;
+    var plotW = Math.max(120, width - padL - padR);
+    var height = top + rows.length * rowH + axisH;
+    var x = function (v) { return padL + (v / maxV) * plotW; };
+    stepEl.replaceChildren();
+    var svg = svgEl("svg", { viewBox: "0 0 " + width + " " + height, role: "img",
+      "aria-label": "Stacked bars of compute time and data wait per training step for each configuration" }, stepEl);
+    var ticks = niceTicks(maxV, width < 480 ? 4 : 5);
+    ticks.forEach(function (t) {
+      svgEl("line", { x1: x(t), x2: x(t), y1: top, y2: height - axisH + 4, stroke: css("--grid"), "stroke-width": 1 }, svg);
+      text(svg, x(t), height - axisH + 20, t + (t === ticks[ticks.length - 1] ? " ms" : ""),
+        { "text-anchor": t === 0 ? "start" : "middle", "font-size": 11, fill: css("--axis-text") });
+    });
+    svgEl("line", { x1: x(0), x2: x(0), y1: top, y2: height - axisH + 4, stroke: css("--axis"), "stroke-width": 1 }, svg);
+    rows.forEach(function (s, i) {
+      var y0 = top + i * rowH;
+      text(svg, x(0), y0 + 14, s.name, { "font-size": 12.5, fill: css("--ink") });
+      var by = y0 + 22;
+      var cw = x(s.updt) - x(0);
+      var dw = Math.max(0, x(s.updt + s.data) - x(s.updt) - 2);
+      var g = svgEl("g", { tabindex: 0, role: "img",
+        "aria-label": s.name + ": compute " + s.updt + " ms, data wait " + s.data + " ms, r " + s.r }, svg);
+      svgEl("rect", { x: x(0), y: by, width: cw, height: barH, fill: css("--s1") }, g);
+      if (dw > 0) svgEl("path", { d: barPath(x(s.updt) + 2, by, dw, barH, 4), fill: css("--s2") }, g);
+      var endX = x(s.updt + s.data) + 8;
+      var label = text(svg, endX, by + 13, (s.approx ? "r ≈ " : "r = ") + s.r, { "font-size": 12, fill: css("--ink-2"),
+        "font-weight": s.approx ? 650 : 400 });
+      if (endX + 70 > width) { label.setAttribute("x", width); label.setAttribute("text-anchor", "end"); label.setAttribute("y", y0 + 14); }
+      // Hit target spans the whole row, wider than the painted bar.
+      var hit = svgEl("rect", { x: 0, y: y0, width: width, height: rowH, fill: "transparent" }, g);
+      function enter(e) {
+        g.style.opacity = "0.85";
+        var pm = function (m, sd) { return s.approx ? "≈" + m + " ms" : m.toFixed(1) + " ± " + sd.toFixed(1) + " ms"; };
+        showTip(e, s.name, [[css("--s1"), pm(s.updt, s.usd), "compute (updt_s)"], [css("--s2"), pm(s.data, s.dsd), "data wait (data_s)"], [null, (s.approx ? "≈" : "") + s.r, "data-path ratio r"]]);
+      }
+      hit.addEventListener("pointerenter", enter);
+      hit.addEventListener("pointermove", moveTip);
+      hit.addEventListener("pointerleave", function () { g.style.opacity = ""; hideTip(); });
+      g.addEventListener("focus", enter);
+      g.addEventListener("blur", function () { g.style.opacity = ""; hideTip(); });
+    });
+  }
+  document.querySelectorAll("#step-card .seg button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      stepMode = b.dataset.mode;
+      document.querySelectorAll("#step-card .seg button").forEach(function (o) { o.setAttribute("aria-pressed", o === b ? "true" : "false"); });
+      drawSteps();
+    });
+  });
+  onResize(stepEl, drawSteps);
+  redraws.push(function () { drawSteps(); });
+
+  // ---------- Chart 2: isolated throughput vs training wall-clock ----------
+  function hbar(el, rows, opts) {
+    function draw(width) {
+      width = width || el.clientWidth;
+      var padR = opts.padR, rowH = 44, barH = 18, top = 2, axisH = 28;
+      var plotW = Math.max(100, width - padR);
+      var height = top + rows.length * rowH + axisH;
+      var x = function (v) { return (v / opts.max) * plotW; };
+      el.replaceChildren();
+      var svg = svgEl("svg", { viewBox: "0 0 " + width + " " + height, role: "img", "aria-label": opts.aria }, el);
+      var ticks = niceTicks(opts.max, width < 360 ? 3 : 4);
+      ticks.forEach(function (t) {
+        svgEl("line", { x1: x(t), x2: x(t), y1: top, y2: height - axisH + 4, stroke: css("--grid"), "stroke-width": 1 }, svg);
+        text(svg, x(t), height - axisH + 19, t, { "text-anchor": t === 0 ? "start" : "middle", "font-size": 11, fill: css("--axis-text") });
+      });
+      svgEl("line", { x1: 0, x2: 0, y1: top, y2: height - axisH + 4, stroke: css("--axis"), "stroke-width": 1 }, svg);
+      rows.forEach(function (r, i) {
+        var y0 = top + i * rowH, by = y0 + 20;
+        text(svg, 0, y0 + 13, r.name, { "font-size": 12, fill: css("--ink") });
+        var g = svgEl("g", { tabindex: 0, role: "img", "aria-label": r.name + ": " + r.label }, svg);
+        var color = r.ours ? css("--s1") : css("--base-bar");
+        svgEl("path", { d: barPath(0, by, x(r.v), barH, 4), fill: color }, g);
+        var endV = r.v;
+        if (r.sd) {
+          var cy = by + barH / 2, ink = css("--ink");
+          svgEl("line", { x1: x(r.v - r.sd), x2: x(r.v + r.sd), y1: cy, y2: cy, stroke: ink, "stroke-width": 1.5 }, g);
+          [r.v - r.sd, r.v + r.sd].forEach(function (v) { svgEl("line", { x1: x(v), x2: x(v), y1: cy - 5, y2: cy + 5, stroke: ink, "stroke-width": 1.5 }, g); });
+          endV = r.v + r.sd;
+        }
+        text(svg, x(endV) + 8, by + 13, r.label, { "font-size": 12, fill: css("--ink-2") });
+        var hit = svgEl("rect", { x: 0, y: y0, width: width, height: rowH, fill: "transparent" }, g);
+        function enter(e) { g.style.opacity = "0.85"; showTip(e, r.name, [[color, r.label, r.tipName]]); }
+        hit.addEventListener("pointerenter", enter);
+        hit.addEventListener("pointermove", moveTip);
+        hit.addEventListener("pointerleave", function () { g.style.opacity = ""; hideTip(); });
+        g.addEventListener("focus", enter);
+        g.addEventListener("blur", function () { g.style.opacity = ""; hideTip(); });
+      });
+    }
+    onResize(el, draw);
+    redraws.push(function () { draw(); });
+  }
+  hbar(document.getElementById("iso-chart"), [
+    { name: "arrow_uint8 (ours)", v: 135.5, ours: true, label: "135.5 (3.94×)", tipName: "samples/s" },
+    { name: "torchcodec", v: 34.4, label: "34.4", tipName: "samples/s" },
+    { name: "PyAV", v: 19.5, label: "19.5", tipName: "samples/s" }
+  ], { max: 150, padR: 96, aria: "Isolated throughput: arrow_uint8 135.5, torchcodec 34.4, PyAV 19.5 samples per second" });
+  hbar(document.getElementById("wall-chart"), [
+    { name: "torchcodec (3 seeds)", v: 326, sd: 4, label: "326 ± 4 s", tipName: "training loop" },
+    { name: "CoW raw-pixel (ours, 3 seeds)", v: 324, sd: 1, ours: true, label: "324 ± 1 s", tipName: "training loop, −0.6%" },
+    { name: "arrow_uint8_jpeg (ours, 1 seed)", v: 329, ours: true, label: "329 s", tipName: "training loop, +0.9%" }
+  ], { max: 350, padR: 80, aria: "Training-loop wall-clock: torchcodec 326 plus or minus 4 seconds, CoW 324 plus or minus 1, arrow_uint8_jpeg 329" });
+
+  // ---------- Chart 3: Amdahl calculator ----------
+  var presets = [
+    { name: "Coffee, torchcodec", data: 1.9, updt: 167.6, r: 0.0113 },
+    { name: "Coffee, CoW", data: 2.1, updt: 167.6, r: 0.0123 },
+    { name: "Aloha, bs 8", data: 6.9, updt: 311.1, r: 0.0223 },
+    { name: "Aloha, smaller ACT", data: 12.8, updt: 367.8, r: 0.0349 },
+    { name: "Coffee, PyAV", data: 810, updt: 166, r: 4.88 }
+  ];
+  var inData = document.getElementById("in-data"), inUpdt = document.getElementById("in-updt"), inK = document.getElementById("in-k");
+  var presetBox = document.getElementById("presets");
+  presets.forEach(function (p, i) {
+    var b = document.createElement("button");
+    b.type = "button"; b.textContent = p.name; b.setAttribute("aria-pressed", i === 3 ? "true" : "false");
+    b.addEventListener("click", function () {
+      inData.value = p.data; inUpdt.value = p.updt; activePreset = i;
+      presetBox.querySelectorAll("button").forEach(function (o) { o.setAttribute("aria-pressed", o === b ? "true" : "false"); });
+      updateCalc();
+    });
+    presetBox.appendChild(b);
+  });
+  var activePreset = 3;
+  inData.value = presets[3].data; inUpdt.value = presets[3].updt;
+
+  function S(k, r) { return (1 + r) / (1 + r / k); }
+  function fmtS(s) {
+    if (s >= 1.995) return s.toFixed(2) + "×";
+    return s.toFixed(3) + "×";
+  }
+  function fmtPct(r) {
+    var p = r * 100;
+    return (p >= 100 ? p.toFixed(0) : p >= 10 ? p.toFixed(1) : p.toFixed(2)) + "%";
+  }
+  function fmtK(k) { return (k >= 100 ? k.toFixed(0) : k >= 10 ? k.toFixed(1) : k.toFixed(2)).replace(/\.0+$/, "") + "×"; }
+  function savedText(s) {
+    var saved = 1 - 1 / s;
+    return saved * 100 < 0.05 ? "no measurable time saved" : (saved * 100).toFixed(saved < 0.1 ? 1 : 0) + "% less training time";
+  }
+
+  var amEl = document.getElementById("amdahl-chart");
+  function currentR() {
+    if (activePreset !== null) return presets[activePreset].r;
+    var d = parseFloat(inData.value), u = parseFloat(inUpdt.value);
+    if (!(d >= 0) || !(u > 0)) return null;
+    return d / u;
+  }
+  function updateCalc() {
+    var r = currentR(), k = Math.pow(10, parseFloat(inK.value));
+    document.getElementById("out-k").textContent = fmtK(k);
+    if (r === null) {
+      ["r-val", "s-val", "c-val"].forEach(function (id) { document.getElementById(id).textContent = "-"; });
+      ["r-sub", "s-sub", "c-sub"].forEach(function (id) { document.getElementById(id).textContent = "Enter data_s and updt_s"; });
+      amEl.replaceChildren();
+      return;
+    }
+    document.getElementById("r-val").textContent = fmtPct(r);
+    document.getElementById("r-sub").textContent = r < 0.05 ? "below the 5% practical threshold" : "the data path is worth a look";
+    var s = S(k, r);
+    document.getElementById("s-val").textContent = fmtS(s);
+    document.getElementById("s-sub").textContent = savedText(s);
+    document.getElementById("c-val").textContent = fmtS(1 + r);
+    document.getElementById("c-sub").textContent = savedText(1 + r);
+    drawAmdahl();
+  }
+  [inData, inUpdt].forEach(function (inp) {
+    inp.addEventListener("input", function () {
+      activePreset = null;
+      presetBox.querySelectorAll("button").forEach(function (o) { o.setAttribute("aria-pressed", "false"); });
+      updateCalc();
+    });
+  });
+  inK.addEventListener("input", updateCalc);
+
+  function drawAmdahl(width) {
+    width = width || amEl.clientWidth;
+    var r = currentR();
+    if (r === null || !width) return;
+    var k = Math.pow(10, parseFloat(inK.value));
+    var padL = 52, padR = 16, top = 22, bottom = 34;
+    var height = width < 480 ? 220 : 260;
+    var plotW = width - padL - padR, plotH = height - top - bottom;
+    var ceil = 1 + r;
+    // y range: 1 to a clean value above the ceiling.
+    var span = ceil - 1, yMax;
+    if (span <= 0) yMax = 1.01;
+    else {
+      var mag = Math.pow(10, Math.floor(Math.log10(span * 1.15)));
+      yMax = 1 + Math.ceil((span * 1.15) / mag) * mag;
+    }
+    var xs = function (kk) { return padL + (Math.log10(kk) / 3) * plotW; };
+    var ys = function (v) { return top + (1 - (v - 1) / (yMax - 1)) * plotH; };
+    amEl.replaceChildren();
+    var svg = svgEl("svg", { viewBox: "0 0 " + width + " " + height, role: "img",
+      "aria-label": "Overall training speedup against loader speedup for r = " + fmtPct(r) + ", rising toward a ceiling of " + fmtS(ceil) }, amEl);
+    // Grid and y ticks
+    var yt = niceTicks(yMax - 1, 4);
+    var dec = (yMax - 1) < 0.1 ? 3 : (yMax - 1) < 1 ? 2 : 1;
+    yt.forEach(function (t) {
+      var v = 1 + t;
+      svgEl("line", { x1: padL, x2: width - padR, y1: ys(v), y2: ys(v), stroke: t === 0 ? css("--axis") : css("--grid"), "stroke-width": 1 }, svg);
+      text(svg, padL - 8, ys(v) + 4, v.toFixed(dec) + "×", { "text-anchor": "end", "font-size": 11, fill: css("--axis-text") });
+    });
+    [1, 10, 100, 1000].forEach(function (t) {
+      text(svg, xs(t), height - bottom + 18, t + "×", { "text-anchor": t === 1 ? "start" : t === 1000 ? "end" : "middle", "font-size": 11, fill: css("--axis-text") });
+    });
+    text(svg, padL + plotW / 2, height - 4, "loader speedup k (log scale)", { "text-anchor": "middle", "font-size": 11, fill: css("--axis-text") });
+    // Ceiling reference
+    svgEl("line", { x1: padL, x2: width - padR, y1: ys(ceil), y2: ys(ceil), stroke: css("--ink-2"), "stroke-width": 1, "stroke-dasharray": "4 4" }, svg);
+    text(svg, width - padR, ys(ceil) - 7, "ceiling " + fmtS(ceil), { "text-anchor": "end", "font-size": 11, fill: css("--ink-2") });
+    // Curve and its 10% wash
+    var pts = [];
+    for (var i = 0; i <= 120; i++) { var kk = Math.pow(10, (3 * i) / 120); pts.push([xs(kk), ys(S(kk, r))]); }
+    var line = "M" + pts.map(function (p) { return p[0].toFixed(1) + "," + p[1].toFixed(1); }).join("L");
+    svgEl("path", { d: line + "L" + xs(1000) + "," + ys(1) + "L" + xs(1) + "," + ys(1) + "Z", fill: css("--s1"), "fill-opacity": 0.1 }, svg);
+    svgEl("path", { d: line, fill: "none", stroke: css("--s1"), "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+    // Current k marker with a surface ring
+    svgEl("circle", { cx: xs(k), cy: ys(S(k, r)), r: 5, fill: css("--s1"), stroke: css("--card"), "stroke-width": 2 }, svg);
+    // Crosshair hover
+    var cross = svgEl("line", { y1: top, y2: top + plotH, stroke: css("--axis-text"), "stroke-width": 1, opacity: 0 }, svg);
+    var dot = svgEl("circle", { r: 4, fill: css("--s1"), stroke: css("--card"), "stroke-width": 2, opacity: 0 }, svg);
+    var hit = svgEl("rect", { x: padL, y: top, width: plotW, height: plotH, fill: "transparent" }, svg);
+    hit.addEventListener("pointermove", function (e) {
+      var box = svg.getBoundingClientRect();
+      var px = (e.clientX - box.left) * (width / box.width);
+      var kk = Math.pow(10, Math.max(0, Math.min(3, ((px - padL) / plotW) * 3)));
+      var s = S(kk, r);
+      cross.setAttribute("x1", xs(kk)); cross.setAttribute("x2", xs(kk)); cross.setAttribute("opacity", 1);
+      dot.setAttribute("cx", xs(kk)); dot.setAttribute("cy", ys(s)); dot.setAttribute("opacity", 1);
+      showTip(e, "Loader " + fmtK(kk) + " faster", [[css("--s1"), fmtS(s), "overall training speedup"]]);
+    });
+    hit.addEventListener("pointerleave", function () { cross.setAttribute("opacity", 0); dot.setAttribute("opacity", 0); hideTip(); });
+  }
+  onResize(amEl, drawAmdahl);
+  redraws.push(function () { drawAmdahl(); });
+  updateCalc();
+
+  // ---------- BibTeX copy ----------
+  var copyBtn = document.getElementById("copy-bib");
+  copyBtn.addEventListener("click", function () {
+    var txt = document.getElementById("bibtex").textContent;
+    var done = function () { copyBtn.textContent = "Copied"; setTimeout(function () { copyBtn.textContent = "Copy"; }, 1500); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, function () {});
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+# Version control and editor state
+.git
+.github
+.vscode/
+.idea/
+*.swp
+
+# Rust and Python build products
+target/
+dist/
+wheels/
+*.whl
+*.so
+.build-stubs/
+
+# Python caches and virtual environments
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+venv/
+.env/
+
+# Datasets and run artifacts are mounted at run time
+data/
+outputs/
+results/
+wandb/

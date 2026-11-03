@@ -1,0 +1,41 @@
+# SmolVLA with stock LeRobot (torchcodec video backend), trained on
+# HuggingFaceVLA/libero (all four LIBERO suites, 40 tasks) and evaluated on
+# LIBERO-10.
+# 100k steps, batch 16, seed 42; the policy uses LeRobot's SmolVLA defaults
+# (see Appendix A of the paper for the resulting settings).
+#
+# Paper: the "lerobot (torchcodec)" row of Table 5 (Section 4.5), run on an
+# L40S with GPU utilization logged by nvml_gpu_usage_wrapper.sh. The
+# "lerobot + aug" row adds --dataset.image_transforms.enable=true; the two
+# rust rows need the data-core LeRobot fork.
+#
+# Run from the repository root:
+#   lerobot-train --config_path lerobot-scripts/smolvla_libero_10.yaml \
+#       --output_dir outputs/smolvla_libero_10
+#
+# Requires LeRobot with the SmolVLA and LIBERO extras (the periodic evaluation
+# runs LIBERO-10 rollouts). The dataset HuggingFaceVLA/libero (about 35 GB) is
+# downloaded by LeRobot on first use. W&B logging is on; pass
+# --wandb.enable=false to turn it off.
+policy:
+  type: smolvla
+  push_to_hub: false
+  load_vlm_weights: true
+dataset:
+  repo_id: HuggingFaceVLA/libero
+env:
+  type: libero
+  task: libero_10
+eval:
+  n_episodes: 1
+  batch_size: 1
+wandb:
+  enable: true
+  project: experiments
+steps: 100000
+eval_freq: 10000
+batch_size: 16
+num_workers: 4
+log_freq: 500
+save_freq: 10000
+seed: 42

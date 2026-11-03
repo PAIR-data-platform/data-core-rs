@@ -1,0 +1,38 @@
+# Rust build output
+/target/
+
+# Python build products
+/dist/
+/wheels/
+*.whl
+*.so
+*.pyd
+*.egg-info/
+.build-stubs/
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.env/
+
+# Editors and OS files
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Data directory: keep the README, ignore everything else
+data/*
+!data/README.md
+
+# Run artifacts and generated benchmark results
+outputs/
+results/
+
+# W&B local run dirs
+wandb/
