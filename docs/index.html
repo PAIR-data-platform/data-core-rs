@@ -8,6 +8,12 @@
 <meta property="og:title" content="An Empirical Study of Data-Loading Bottlenecks (and Non-Bottlenecks) in Robotic Imitation Learning">
 <meta property="og:description" content="In the LeRobot training runs we profiled, the data path takes 1 to 3.5% of each training step. Faster loaders do not shorten training; unindexed video seeking does lengthen it.">
 <meta property="og:type" content="website">
+<meta property="og:url" content="https://pair-data-platform.github.io/data-core-rs/">
+<meta property="og:image" content="https://pair-data-platform.github.io/data-core-rs/assets/social_card.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Paper title with three results: 1 to 3.5% of each step spent waiting for data; a 3.94× faster loader gives no change in training wall-clock; unindexed PyAV seeking makes training 5.6× slower">
+<meta name="twitter:card" content="summary_large_image">
 <style>
 :root {
   color-scheme: light;
@@ -93,6 +99,7 @@ pre code { background: none; padding: 0; font-size: 0.86rem; }
 .hero { padding: 56px 0 36px; text-align: center; }
 .venue { display: inline-block; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); background: var(--chip); border: 1px solid var(--border); padding: 3px 10px; border-radius: 999px; margin: 0 0 18px; }
 .hero h1 { font-size: clamp(1.6rem, 4.2vw, 2.45rem); line-height: 1.2; letter-spacing: -0.01em; margin: 0 auto 22px; max-width: 820px; font-weight: 700; text-wrap: balance; }
+.tagline { font-size: 1.15rem; color: var(--ink-2); margin: -6px auto 22px; max-width: 680px; text-wrap: balance; }
 .authors { font-size: 1.08rem; margin: 0 0 4px; }
 .authors span { white-space: nowrap; margin: 0 10px; }
 .affil { color: var(--ink-2); font-size: 0.95rem; margin: 0 0 24px; }
@@ -139,6 +146,7 @@ p { margin: 0 0 14px; }
 .two-up { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media (max-width: 760px) { .two-up { grid-template-columns: 1fr; } }
 .two-up .card { margin: 0; }
+.two-up .chart { margin-top: 10px; }
 
 /* Segmented control */
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; padding: 2px; background: var(--page); }
@@ -210,6 +218,7 @@ footer p { margin: 0 0 6px; }
 <header class="hero wrap">
   <p class="venue">CoRL 2026</p>
   <h1>An Empirical Study of Data-Loading Bottlenecks (and Non-Bottlenecks) in Robotic Imitation Learning</h1>
+  <p class="tagline">Faster data loaders don't shorten robot-policy training. Unindexed video seeking does lengthen it.</p>
   <p class="authors"><span>Mrinal Jain<sup>1</sup></span><span>Arpit Gupta<sup>2</sup></span><span>Animesh Garg<sup>1</sup></span></p>
   <p class="affil"><span><sup>1</sup>Georgia Institute of Technology</span><span><sup>2</sup>General Motors</span></p>
   <nav class="links" aria-label="Paper and code">
@@ -241,9 +250,9 @@ footer p { margin: 0 0 6px; }
       <p class="note">End-to-end training wall-clock with our engine: 324 ± 1 s against 326 ± 4 s, within run-to-run noise.</p>
     </div>
     <div class="tile">
-      <p class="label">Data-path ratio with PyAV seeking in AV1 video</p>
-      <p class="value">≈488%</p>
-      <p class="note">The one real bottleneck we found, caused by unindexed sequential seeks rather than by loading itself.</p>
+      <p class="label">Slower training with PyAV seeking in AV1 video</p>
+      <p class="value">5.6×</p>
+      <p class="note">The one real bottleneck we found (data-path ratio ≈ 488%), caused by unindexed sequential seeks rather than by loading itself.</p>
     </div>
   </div>
 </section>
@@ -257,7 +266,7 @@ footer p { margin: 0 0 6px; }
     <span><i>r</i> =</span>
     <span class="frac"><span class="num">data_s</span><span class="den">updt_s</span></span>
   </div>
-  <p>Amdahl's law turns <i>r</i> into a hard limit. Even an infinitely fast loader can speed up training by at most a factor of 1 + <i>r</i>. At <i>r</i> = 3.5% that ceiling is 3.5%, about the size of run-to-run variance in training time.</p>
+  <p>Amdahl's law turns <i>r</i> into a hard limit. Even an infinitely fast loader can speed up training by at most a factor of 1 + <i>r</i>. At <i>r</i> = 3.5%, the highest ratio we measured, that is a 3.5% speedup (1.035×) at best.</p>
 
   <div class="card" id="step-card">
     <div class="card-head">
@@ -333,21 +342,13 @@ footer p { margin: 0 0 6px; }
     </table></div>
   </details>
   <p style="margin-top: 16px">Placement matters too. <code>arrow_f32</code> moves the float conversion and /255 normalization to the CPU, which quadruples host memory and PCIe transfer volume. Under heavy augmentation it nearly halves isolated throughput and drops below torchcodec.</p>
-  <figure class="narrow">
-    <div class="img"><img src="assets/wins_evaporate.png" alt="Slope chart: warm-cache access at about 5.7 million times and the arrow_uint8 pipeline at 3.94 times faster in isolation both fall to 1.0 times in end-to-end training wall-clock" loading="lazy" width="1010" height="763"></div>
-    <figcaption><b>Both isolated wins collapse.</b> Warm-cache access (about 10<sup>6</sup>×) and the <code>arrow_uint8</code> pipeline (3.94×) both give no measurable speedup in end-to-end training wall-clock.</figcaption>
-  </figure>
 </section>
 
 <section class="wrap" aria-labelledby="pyav">
   <p class="kicker">Finding</p>
   <h2 id="pyav">The real bottleneck is unindexed video seeking</h2>
-  <p>PyAV is the only configuration where the data path bounds training. It seeks sequentially, O(N), through AV1 video that has no frame-level index. On MimicGen Coffee this gives <code>data_s</code> ≈ 0.81 s against <code>updt_s</code> = 0.166 s, so <i>r</i> ≈ 488%, and training time grows from 5.8 to 32.2 minutes (5.6× slower). At batch size 32 the gap widens to 15.1×, which is behind LeRobot's switch to torchcodec.</p>
+  <p>PyAV is the only configuration where the data path bounds training. It seeks sequentially, O(N), through AV1 video that has no frame-level index. On MimicGen Coffee this gives <code>data_s</code> ≈ 0.81 s against <code>updt_s</code> = 0.166 s, so <i>r</i> ≈ 488%. The GPU sits idle for about 83% of each step, and training time grows from 5.8 to 32.2 minutes (5.6× slower). At batch size 32 the gap widens to 15.1×, which is behind LeRobot's switch to torchcodec.</p>
   <p>This is a property of the decoder's seek path, not of the LeRobot format. The same AV1 files read through torchcodec's indexed seeking give <i>r</i> = 1.1%. Pair a storage format with a decoder that supports index-based random access and severe data bottlenecks do not arise.</p>
-  <figure>
-    <div class="img"><img src="assets/gpu_utilization.png" alt="Two bar charts of GPU idle fraction. Left: four standard configurations between 1.1 and 3.4 percent. Right: the same plus PyAV at 83 percent, above an unprefetched HDF5 baseline line at 37 percent" loading="lazy" width="1940" height="735"></div>
-    <figcaption><b>Per-step GPU-idle (data-wait) fraction.</b> (a) Standard configurations show minimal data starvation (1.1 to 3.4%). (b) PyAV sequential decoding inflates the idle fraction to about 83%; the dashed line marks an unprefetched HDF5 baseline (37% idle).</figcaption>
-  </figure>
 </section>
 
 <section class="wrap" aria-labelledby="aug">
@@ -410,12 +411,8 @@ footer p { margin: 0 0 6px; }
     </div>
     <div class="legend" aria-hidden="true"><span><i style="background: var(--s1)"></i>Overall training speedup</span></div>
     <div class="chart" id="amdahl-chart"></div>
-    <p class="caption">Overall speedup S(k) = (1 + r) / (1 + r / k) for a loader that is k× faster, the same model as the paper's Amdahl envelope below. As k grows, S approaches 1 + r. Presets use the ratios reported in the paper; the rounded means shown in the inputs can differ from them in the last digit.</p>
+    <p class="caption">Overall speedup S(k) = (1 + r) / (1 + r / k) for a loader that is k× faster, the same Amdahl model as the paper's envelope figure. As k grows, S approaches 1 + r. Presets use the ratios reported in the paper; the rounded means shown in the inputs can differ from them in the last digit. Try the PyAV preset to see the one regime with real headroom (about 5.9×).</p>
   </div>
-  <figure>
-    <div class="img"><img src="assets/amdahl_envelope.png" alt="Two panels of overall wall-clock speedup against data-loader speedup. Left: measured ratios between 1.2 and 3.5 percent stay under 1.035. Right: the PyAV regime reaches about 5.9 times" loading="lazy" width="1840" height="740"></div>
-    <figcaption><b>The Amdahl envelope from the paper.</b> (a) At the measured ratios (1.0 to 3.5%), a 100× loader speedup gives at most 3.5% overall wall-clock improvement. (b) Real headroom (about 5.9×) appears only in the PyAV decoding regime.</figcaption>
-  </figure>
 </section>
 
 <section class="wrap" aria-labelledby="cache">
@@ -477,7 +474,8 @@ frame = ds[42]                                       # decodes on demand</code><
   <div class="bib-wrap">
     <button class="copy" type="button" id="copy-bib">Copy</button>
 <pre><code id="bibtex">@inproceedings{jain2026dataloading,
-  title     = {An Empirical Study of Data-Loading Bottlenecks (and Non-Bottlenecks) in Robotic Imitation Learning},
+  title     = {An Empirical Study of Data-Loading Bottlenecks
+               (and Non-Bottlenecks) in Robotic Imitation Learning},
   author    = {Jain, Mrinal and Gupta, Arpit and Garg, Animesh},
   booktitle = {Conference on Robot Learning (CoRL)},
   year      = {2026},
@@ -610,7 +608,7 @@ frame = ds[42]                                       # decodes on demand</code><
     rows.forEach(function (s, i) {
       var y0 = top + i * rowH;
       text(svg, x(0), y0 + 14, s.name, { "font-size": 12.5, fill: css("--ink") });
-      var by = y0 + 22;
+      var by = y0 + 24;
       var cw = x(s.updt) - x(0);
       var dw = Math.max(0, x(s.updt + s.data) - x(s.updt) - 2);
       var g = svgEl("g", { tabindex: 0, role: "img",
@@ -649,7 +647,7 @@ frame = ds[42]                                       # decodes on demand</code><
   function hbar(el, rows, opts) {
     function draw(width) {
       width = width || el.clientWidth;
-      var padR = opts.padR, rowH = 44, barH = 18, top = 2, axisH = 28;
+      var padR = opts.padR, rowH = 48, barH = 18, top = 2, axisH = 28;
       var plotW = Math.max(100, width - padR);
       var height = top + rows.length * rowH + axisH;
       var x = function (v) { return (v / opts.max) * plotW; };
@@ -662,7 +660,7 @@ frame = ds[42]                                       # decodes on demand</code><
       });
       svgEl("line", { x1: 0, x2: 0, y1: top, y2: height - axisH + 4, stroke: css("--axis"), "stroke-width": 1 }, svg);
       rows.forEach(function (r, i) {
-        var y0 = top + i * rowH, by = y0 + 20;
+        var y0 = top + i * rowH, by = y0 + 23;
         text(svg, 0, y0 + 13, r.name, { "font-size": 12, fill: css("--ink") });
         var g = svgEl("g", { tabindex: 0, role: "img", "aria-label": r.name + ": " + r.label }, svg);
         var color = r.ours ? css("--s1") : css("--base-bar");
@@ -674,7 +672,7 @@ frame = ds[42]                                       # decodes on demand</code><
           [r.v - r.sd, r.v + r.sd].forEach(function (v) { svgEl("line", { x1: x(v), x2: x(v), y1: cy - 5, y2: cy + 5, stroke: ink, "stroke-width": 1.5 }, g); });
           endV = r.v + r.sd;
         }
-        text(svg, x(endV) + 8, by + 13, r.label, { "font-size": 12, fill: css("--ink-2") });
+        text(svg, x(endV) + 8, by + 13.5, r.label, { "font-size": 12, fill: css("--ink-2") });
         var hit = svgEl("rect", { x: 0, y: y0, width: width, height: rowH, fill: "transparent" }, g);
         function enter(e) { g.style.opacity = "0.85"; showTip(e, r.name, [[color, r.label, r.tipName]]); }
         hit.addEventListener("pointerenter", enter);
