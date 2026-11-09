@@ -4,6 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Python 3.10 to 3.13](https://img.shields.io/badge/python-3.10%20to%203.13-blue.svg)
 [![Paper](https://img.shields.io/badge/paper-CoRL%202026-b31b1b.svg)](https://openreview.net/forum?id=Vv1WXMkSTD)
+[![Website](https://img.shields.io/badge/website-project%20page-0a7d5a.svg)](https://pair-data-platform.github.io/data-core-rs/)
 
 A Rust data engine for robot learning datasets, with Python bindings. It reads
 [LeRobot](https://github.com/huggingface/lerobot) datasets (v2 and v3), decodes
@@ -14,7 +15,7 @@ This repository accompanies the paper
 
 > **An Empirical Study of Data-Loading Bottlenecks (and Non-Bottlenecks) in Robotic Imitation Learning**
 > Mrinal Jain, Arpit Gupta, Animesh Garg. Conference on Robot Learning (CoRL), 2026.
-> [OpenReview](https://openreview.net/forum?id=Vv1WXMkSTD) · [PDF](https://openreview.net/pdf?id=Vv1WXMkSTD)
+> [OpenReview](https://openreview.net/forum?id=Vv1WXMkSTD) · [PDF](https://openreview.net/pdf?id=Vv1WXMkSTD) · [Project page](https://pair-data-platform.github.io/data-core-rs/)
 
 It contains the engine and the scripts that launch the training, benchmark and
 evaluation runs reported in the paper.
