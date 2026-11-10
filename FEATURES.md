@@ -2,7 +2,8 @@
 
 data-core is a Rust data engine for LeRobot datasets with Python bindings. This
 page describes its main features and where each one lives in the code. For
-installation and usage, see the [README](README.md).
+installation and usage, see the [getting-started guide](GETTING_STARTED.md); for
+an overview, see the [README](README.md).
 
 ## Overview
 
@@ -176,7 +177,8 @@ The repository includes the scripts used for the runs in the paper.
 - **Training launchers:** ACT on MimicGen Coffee and Aloha for each backend
   (torchcodec, copy-on-write cache, Arrow with a JPEG cache), with and without
   augmentation, and a SmolVLA configuration for LIBERO-10. The data-core
-  backends in `lerobot-train` need the LeRobot fork linked in the README.
+  backends in `lerobot-train` need the LeRobot fork described in the
+  [getting-started guide](GETTING_STARTED.md#lerobot-fork).
 - **Timing:** a script that repeats the Coffee runs across three seeds and
   reports training wall-clock, and a wrapper that logs GPU utilization through
   NVML.

@@ -1,4 +1,8 @@
+<div align="center">
+
 # data-core
+
+**A blazing-fast Rust dataloader that drops straight into your LeRobot workflow.**
 
 [![CI](https://github.com/PAIR-data-platform/data-core-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/PAIR-data-platform/data-core-rs/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -6,399 +10,224 @@
 [![Paper](https://img.shields.io/badge/paper-CoRL%202026-b31b1b.svg)](https://openreview.net/forum?id=Vv1WXMkSTD)
 [![Website](https://img.shields.io/badge/website-project%20page-0a7d5a.svg)](https://pair-data-platform.github.io/data-core-rs/)
 
-A Rust data engine for robot learning datasets, with Python bindings. It reads
-[LeRobot](https://github.com/huggingface/lerobot) datasets (v2 and v3), decodes
-video with FFmpeg into Apache Arrow buffers, applies augmentations in Rust, and
-hands samples to PyTorch.
+[**Get started**](GETTING_STARTED.md) · [Paper](https://openreview.net/forum?id=Vv1WXMkSTD) · [Project page](https://pair-data-platform.github.io/data-core-rs/) · [Features](FEATURES.md)
 
-This repository accompanies the paper
+</div>
 
-> **An Empirical Study of Data-Loading Bottlenecks (and Non-Bottlenecks) in Robotic Imitation Learning**
-> Mrinal Jain, Arpit Gupta, Animesh Garg. Conference on Robot Learning (CoRL), 2026.
-> [OpenReview](https://openreview.net/forum?id=Vv1WXMkSTD) · [PDF](https://openreview.net/pdf?id=Vv1WXMkSTD) · [Project page](https://pair-data-platform.github.io/data-core-rs/)
+---
 
-It contains the engine and the scripts that launch the training, benchmark and
-evaluation runs reported in the paper.
+data-core reads your [LeRobot](https://github.com/huggingface/lerobot) v3
+datasets (v2 too), decodes the video **once** into zero-copy
+[Apache Arrow](https://arrow.apache.org/) buffers, shares that single copy with
+every DataLoader worker, and augments frames in Rust. A frame read is a memory
+lookup instead of a video seek, so data loading stops being something you have
+to think about.
 
-## What to expect
+| **3.94×** | **~1000×** | **1.83×** | **1 copy** |
+|:---:|:---:|:---:|:---:|
+| the throughput of torchcodec | lower single-frame access latency | faster than torchcodec + torchvision v2 under heavy augmentation | of the dataset, shared by all workers |
 
-The paper profiles end-to-end policy training in LeRobot. In the ACT
-configurations it measures, the data-path ratio r = data_s / updt_s (the time
-the trainer waits for a batch over the time of the forward and backward pass)
-is 1.1 to 3.5%. In the configuration where it measured end-to-end wall-clock
-(MimicGen Coffee, 84x84, batch 64, three seeds), torchcodec took 326 ± 4 s and
-this engine's copy-on-write backend 324 ± 1 s, within run-to-run noise, even
-though the engine is up to 3.9x faster in an isolated single-process
-benchmark. The exception is a decoder without indexed seeking (PyAV on AV1
-video), where the data path dominates.
+<sub>Isolated benchmarks from the paper: single process, 4-camera 480×640
+dataset. Latency is about 0.8 µs from the cache against about 800 µs for an
+unindexed disk read. How this translates to training time is covered in
+[What to expect end to end](#what-to-expect-end-to-end).</sub>
 
-Use data-core where its other properties matter: one shared decoded copy of the
-dataset for many DataLoader workers, decoding that finishes before workers
-fork, online augmentation in Rust, offline dataset augmentation, and
-measuring how much of your own training step the data path takes. Profile your
-setup before expecting a speed-up. [FEATURES.md](FEATURES.md) lists the
-features and the cases each one fits.
+> **Straight talk.** We built data-core to be as fast as we could make it, then
+> measured whether it shortens policy training. With torchcodec or data-core,
+> the GPU waits on data for only 1 to 3.5% of each step, so in standard LeRobot
+> setups end-to-end wall-clock time does not measurably change. What you get is
+> a loader that is never the problem, plus the memory, safety and augmentation
+> features below, plus the tooling to check all of this on your own setup.
 
-## Features
+## Why data-core
 
-- **Lazy loading**: open a dataset from its metadata alone and decode episodes on demand, with an optional cache limit.
-- **Copy-on-write shared cache**: decode episodes once in the parent process and share them with forked DataLoader workers, with no per-worker copies and no FFmpeg in the workers.
-- **Augmentations in Rust**: image, action and state augmentations, including a fused single-pass image augmentation that, with `window_size` set, keeps crop, jitter and flip consistent across the frames of a sample.
-- **Custom augmentations in Python**: per-episode and whole-dataset augmentation classes over PyArrow record batches.
-- **PyTorch frontend**: frame, chunk and episode sampling modes with ready-made DataLoaders.
-- **Typed Python API**: the package ships type information (`py.typed` and a stub for the Rust module) for editors and type checkers.
+- **Fast where it counts.** After a one-time decode, reading a frame is an O(1)
+  lookup into an Arrow buffer: about 0.8 µs, against about 800 µs for an
+  unindexed disk read. In a single process on a 4-camera 480×640 dataset it
+  delivers 3.94× the throughput of torchcodec and 6.95× that of PyAV.
+- **Drops into LeRobot.** It reads LeRobot v3 and v2 datasets as they are, with
+  no conversion step. `data_core.torch.AugmentedDataset` returns the same sample
+  dictionaries as `LeRobotDataset` (`observation.images.*`, `observation.state`,
+  `action`, `action_is_pad`, ...), and our
+  [`lerobot-train` fork](GETTING_STARTED.md#using-data-core-with-lerobot) adds it
+  as a one-flag dataset backend.
+- **One decoded copy, any number of workers.** Episodes are decoded in the
+  parent process and DataLoader workers read the same memory through Linux
+  copy-on-write. The decoded data is not duplicated per worker, and nothing is
+  pickled between processes.
+- **Fork-safe by construction.** FFmpeg is not fork-safe, and a decoder inside a
+  forked worker can deadlock. data-core finishes all decoding before any worker
+  forks, so workers never touch FFmpeg.
+- **Augmentation in Rust.** Crop, color jitter, noise and flip run in a single
+  fused, parallel pass over integer pixels, and with `window_size` set they stay
+  consistent across all the frames of a sample (what chunked policies like ACT
+  need). Under heavy augmentation the whole pipeline runs 1.83× faster than
+  torchcodec with torchvision v2 (48.1 vs 26.3 samples/s), and in training the
+  augmentation adds at most 0.3 percentage points to the data-path ratio.
+- **Your own augmentations in plain Python.** Per-episode and whole-dataset
+  augmentation classes over PyArrow record batches let you rebalance, duplicate,
+  stitch or perturb trajectories, and run them offline to generate an
+  augmented dataset.
+- **Datasets bigger than RAM.** `LazyDataset` opens a dataset from its metadata
+  alone, decodes episodes on demand, and evicts them when a cache limit is hit.
+- **Typed Python API.** The package ships `py.typed` and a stub for the Rust
+  module, so editors and type checkers see the real signatures.
+- **It tells you whether you need it.** The repository ships the profiling
+  recipe from the paper, so you can measure how much of your own training step
+  the data path takes before you change anything. See
+  [Measure your own run](#measure-your-own-run).
 
-## Repository layout
+## How it works
 
-| Path | Contents |
-|---|---|
-| `crates/core` | Arrow-backed `Episode` and `Dataset` types |
-| `crates/io` | LeRobot readers and writer (Parquet, FFmpeg video), lazy loading, Hub downloads |
-| `crates/augmentations` | Augmentation traits and built-in augmentations |
-| `crates/pipeline` | Pipeline builder and executors |
-| `crates/python` | PyO3 bindings, built into the `data_core._native` extension module |
-| `src/main.rs` | `data-engine` CLI: `data-engine info <path>` prints a dataset summary |
-| `python/data_core` | The Python package: re-exports the Rust module (`data_core._native`, typed by `_native.pyi`) and adds `data_core.torch`, a PyTorch `Dataset` with LeRobot-style samples |
-| `examples/` | Examples for the Python API |
-| `benches/` | A Rust pipeline benchmark and a Python loading benchmark |
-| `scripts/` | Training, benchmark, feature-cache and rollout-evaluation scripts |
-| `lerobot-scripts/` | `lerobot-train` launchers and a GPU-utilization logger |
-| `tests/` | Python tests (Rust tests live next to the code and in `tests/cli.rs`) |
+<p align="center">
+  <img src="docs/assets/data_lifecycle.png" width="760" alt="data-core data path: FFmpeg decodes LeRobot v3 video once in the main process into an immutable Arrow representation; forked workers share it copy-on-write and apply fused Rust augmentation to produce uint8 tensors; the GPU normalizes them for the policy's forward pass.">
+</p>
 
-## Installation
+1. **Preload, in the main process.** FFmpeg decodes each episode once into an
+   immutable Arrow buffer. After this, every frame is a pointer lookup.
+2. **Augment, in forked workers.** Workers fork after decoding and share the
+   buffer copy-on-write. Rust (with Rayon) applies the fused augmentation and
+   returns a `uint8` tensor.
+3. **Normalize, on the GPU.** Tensors cross PCIe as integers, a quarter of the
+   size of float32, and the `/255` normalization runs on the GPU. If you would
+   rather fit more episodes in RAM, a compressed JPEG cache (`arrow_uint8_jpeg`)
+   trades some CPU time for a smaller footprint.
 
-### Requirements
-
-- Linux (tested on Ubuntu 22.04 and 24.04)
-- Rust, stable toolchain (CI uses 1.94)
-- Python 3.10 to 3.13
-- FFmpeg development libraries (tested with FFmpeg 4.4 and 6.1), `pkg-config`, `clang` and `libclang`
-
-On Ubuntu or Debian:
-
-```bash
-sudo apt-get install -y \
-  libavcodec-dev libavformat-dev libavutil-dev \
-  libavfilter-dev libavdevice-dev libswscale-dev libswresample-dev \
-  pkg-config clang libclang-dev
-```
-
-ffmpeg-next, the FFmpeg binding used here, supports FFmpeg up to 7.1; only
-4.4 and 6.1 are tested.
-
-### Build the Python module
-
-```bash
-git clone https://github.com/PAIR-data-platform/data-core-rs.git
-cd data-core-rs
-python3 -m venv .venv && source .venv/bin/activate   # needs the python3-venv package on Ubuntu
-pip install "maturin[patchelf]"
-maturin develop --release
-python -c "import data_core; print('OK')"
-```
-
-If the build fails because bindgen cannot find `limits.h`, clang's own headers
-are missing (usually because `clang` and `libclang-dev` from the list above are
-not installed). Install them, or point bindgen at your GCC headers. Adjust the
-version (`13`) to match `ls /usr/lib/gcc/x86_64-linux-gnu/`, and keep the
-variable exported for later `cargo test`, `cargo run` and `pip install -e`
-builds:
-
-```bash
-export BINDGEN_EXTRA_CLANG_ARGS="-I/usr/lib/gcc/x86_64-linux-gnu/13/include"
-```
-
-If linking fails on a cluster with a non-default toolchain, try:
-
-```bash
-RUSTFLAGS="-C linker=cc" AR="" maturin develop --release
-```
-
-The `Dockerfile` builds an image with CUDA, FFmpeg, Rust and the module
-installed (`docker build -t data-core .`).
-
-### Optional dependencies
-
-```bash
-pip install -e ".[dev]"     # pytest and Pillow, for tests/
-pip install -e ".[torch]"   # PyTorch, for torch_dataloader and data_core.torch
-pip install -e ".[bench]"   # LeRobot, PyTorch, torchcodec and plotting, for scripts/, benches/ and examples/
-```
-
-The experiments used LeRobot 0.4.4; the `bench` extra allows 0.4.x. The
-MimicGen rollout scripts additionally need `robosuite`, `mimicgen`, `h5py`,
-`scipy` and `imageio`, and the GPU logger needs `nvidia-ml-py`. For type
-checking code that uses PyArrow types, install `pyarrow-stubs`.
-
-## Quick start
-
-### Lazy loading
-
-```python
-from data_core import LazyDataset
-
-ds = LazyDataset.open("/path/to/lerobot/dataset")   # reads metadata only
-print(len(ds), ds.num_episodes, ds.camera_names())
-
-frame = ds[42]                       # decodes the containing episode on demand
-print(frame.action, frame.camera_names())
-
-subset = ds.with_episodes([0, 1, 5])  # frame indices now count these episodes only
-subset.preload_episodes([0, 1, 5])    # decode once, share with forked workers
-```
-
-`preload_episodes` holds every frame of the chosen episodes in RAM: about
-4 GB per episode of `lerobot/aloha_static_coffee` (1100 frames, 4 cameras at
-480x640) in raw-pixel mode.
-
-### PyTorch DataLoader
-
-This needs PyTorch (`pip install torch`, or the `torch` extra).
-
-```python
-from data_core import LazyDataset
-
-lazy = LazyDataset.open("/path/to/lerobot/dataset").with_episodes([0, 1])
-
-# Random frames
-loader = lazy.torch_dataloader(mode="random", batch_size=64, shuffle=True)
-
-# Contiguous chunks of frames
-loader = lazy.torch_dataloader(mode="chunk", chunk_size=8, batch_size=16, shuffle=True)
-
-# Whole episodes, padded or truncated to a fixed length
-loader = lazy.torch_dataloader(
-    mode="episode", batch_size=4, shuffle=True,
-    truncate_to_length=128, pad_to_length=128,
-)
-```
-
-`lazy.to_torch_dataset(...)` returns the underlying map-style dataset if you
-want to build the DataLoader yourself. Episode mode returns float32 images, so
-a batch of long high-resolution episodes is large: 4 episodes of 128 frames
-from 4 cameras at 480x640 take about 7.5 GB.
-
-### Augmentation pipelines
-
-```python
-from data_core import Dataset, Pipeline, ParallelConfig
-
-ds = Dataset.from_local("/path/to/lerobot/dataset")   # loads the full dataset
-
-pipeline = Pipeline()
-# "cam_high" is an Aloha camera: use names from ds.camera_names(). run()
-# raises ValueError for a camera the dataset does not have.
-pipeline.add_builtin("color_jitter", '{"brightness": 0.2, "camera_names": ["cam_high"]}')
-pipeline.add_builtin("action_noise", '{"std": 0.01}')
-
-augmented = pipeline.run(ds)
-
-# Or run per-episode steps in parallel
-ds = ds.with_parallel_config(ParallelConfig().set_num_threads(8))
-augmented = pipeline.run_parallel(ds)
-
-augmented.save_lerobot("/path/to/output")
-```
-
-`Dataset.from_local` decodes the whole dataset into memory in one thread: on
-`lerobot/aloha_static_coffee` (50 episodes) that takes about 16 minutes and
-8 GB of RAM. Start with a small dataset; for frame-level access to a large one,
-use `LazyDataset` instead.
-
-Built-in augmentations: `color_jitter`, `random_crop`, `gaussian_blur`,
-`gaussian_noise`, `horizontal_flip`, `frame_dropout`, `fused_image`,
-`action_noise`, `state_noise`, `state_scaling`, `temporal_subsample`. Image
-augmentations need `camera_names` (the names from `camera_names()`). Their
-parameters and defaults are listed in
-[FEATURES.md](FEATURES.md#built-in-augmentations).
-
-### Custom augmentations
-
-A local augmentation maps one episode to one episode. A global augmentation
-maps the list of all episodes to a new list, so it can add or remove episodes.
-Both are plain Python classes with a `run` method over PyArrow record batches.
-
-```python
-import pyarrow as pa
-from data_core import Dataset, Pipeline
-
-class DropLastSteps:
-    def __init__(self, n: int):
-        self.n = n
-
-    def run(self, episode: pa.RecordBatch) -> pa.RecordBatch:
-        return episode.slice(0, max(1, len(episode) - self.n))
-
-class DuplicateEpisodes:
-    def run(self, episodes: list[pa.RecordBatch], metadata: dict) -> list[pa.RecordBatch]:
-        return episodes + episodes
-
-pipeline = Pipeline()
-pipeline.add_local(DropLastSteps(5))
-pipeline.add_global(DuplicateEpisodes())
-augmented = pipeline.run(Dataset.from_local("/path/to/lerobot/dataset"))
-```
-
-The `metadata` dict carries `name`, `robot_type`, `fps`, `action_dim`,
-`state_dim`, `camera_names`, `tasks`, `num_episodes`, `num_steps` and
-`source`.
-
-Longer examples are in `examples/`:
-
-| Example | Shows |
-|---|---|
-| `custom_augmentation_local.py` | Per-episode augmentation classes (action smoothing, truncation, noise), run on synthetic episodes |
-| `custom_augmentation_global.py` | Dataset-level augmentation classes (duplication, trajectory stitching, balancing), run on synthetic episodes |
-| `end_to_end_example.py` | Local and global augmentation classes chained on synthetic episodes |
-| `libero10_augmentation.py` | An image and state augmentation pipeline on `lerobot/libero_10` |
-| `visualize_augmented.py` | Plots frames, actions and states from an augmented dataset |
-| `train_act_lazy.py` | ACT training on the `LazyDataset` PyTorch frontend |
-| `port_mimicgen.py` | Converting a MimicGen dataset from LeRobot v2.1 to v3.0 |
-
-### PyTorch `Dataset` with LeRobot-style samples
-
-`data_core.torch` wraps `LazyDataset` in a `torch.utils.data.Dataset` that
-returns the same keys as `LeRobotDataset` (`observation.images.*`,
-`observation.state`, `action`, `action_is_pad`, ...), with a DataLoader helper
-that preloads the copy-on-write cache and groups samples by episode. It needs
-PyTorch.
+## Quick look
 
 ```python
 from data_core.torch import AugmentedDataset, make_dataloader
 
-# Keys and timestamps are for a 50 fps dataset with a camera named "top";
-# use your dataset's camera names and multiples of 1 / fps (other values raise
-# ValueError).
+# Same keys as LeRobotDataset: observation.images.*, observation.state, action, ...
+# Keys and timestamps here are for a 50 fps dataset with a camera named "top";
+# use your dataset's camera names and multiples of 1 / fps.
 ds = AugmentedDataset(
     "/path/to/lerobot/dataset",
     delta_timestamps={"observation.images.top": [0.0], "action": [i / 50 for i in range(100)]},
+    augmentation="fused_image",
+    augmentation_params={"brightness": 0.1, "contrast": 0.1, "saturation": 0.1, "noise_std": 0.02},
 )
-# With workers, the chosen episodes (default: all) are preloaded into RAM.
-loader = make_dataloader(ds, batch_size=8, num_workers=4, preload_episodes=[0, 1])
+
+# Decode once in the parent process, then share it with 4 forked workers.
+# By default every episode is preloaded into RAM; pass preload_episodes=[...] to choose.
+loader = make_dataloader(ds, batch_size=64, num_workers=4)
+
+for batch in loader:
+    images = batch["observation.images.top"]   # uint8: divide by 255 on the GPU
+    ...
 ```
 
-### Command line
+Already training with `lerobot-train`? With our fork it is one flag,
+`--dataset.use_data_core true`, plus `--dataset.data_core_aug_preset fused_image`
+for Rust augmentation. See
+[Using data-core with LeRobot](GETTING_STARTED.md#using-data-core-with-lerobot).
 
-```bash
-cargo run --release -- info /path/to/lerobot/dataset
-```
+## Installation
 
-## Tests and benchmarks
+data-core builds from source on Linux with Python 3.10 to 3.13. You need a
+stable Rust toolchain and the FFmpeg development libraries; `maturin` does the
+rest. Step-by-step instructions, Docker, optional extras and troubleshooting are
+in the **[installation and usage guide](GETTING_STARTED.md)**.
 
-```bash
-cargo test --workspace
-pytest tests/          # after pip install -e ".[dev]"; the PyTorch tests also need torch
+## What to expect end to end
 
-cargo bench --bench loading_benchmark        # Rust pipeline timings, sequential vs parallel (needs lerobot/libero_10)
-python benches/loading_benchmark.py          # Python, next to LeRobotDataset
-python scripts/benchmark_lazy_dataset.py     # LazyDataset access patterns (needs lerobot/aloha_static_fork_pick_up)
-```
+The paper ([CoRL 2026](https://openreview.net/forum?id=Vv1WXMkSTD)) profiles
+full policy training in LeRobot with ACT and SmolVLA, on an RTX 4070 Ti Super
+and an L40S, across three datasets, three resolutions (84×84 to 480×640) and
+four batch sizes. The headline result: **in standard setups the data loader is
+not what limits training**. data-core is built to be a loader you never have to
+worry about.
 
-`benchmark_lazy_dataset.py` repeats each pattern `--runs` times (default 3);
-the cold random-access pattern decodes a full 4-camera episode per sample and
-dominates the run time, so pass `--runs 1` for a quick check.
+| Backend | No augmentation | Heavy augmentation | Throughput vs torchcodec |
+|---|---:|---:|---:|
+| **data-core** (`arrow_uint8`) | **135.5** | **48.1** | **3.94×** |
+| torchcodec | 34.4 | 26.3 | 1.0× |
+| PyAV | 19.5 | 16.0 | 0.57× |
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup.
+<sub>Samples per second, single process, no DataLoader workers, 4-camera
+480×640 (paper Table 2). A warm frame in the shared cache is served at about
+625k samples/s, around 10⁶× faster than a cold-cache video decode.</sub>
 
-## Experiment scripts
+- **The data path is a sliver of each step.** The GPU waits on data for 1.0 to
+  3.5% of step time in every standard configuration, with data-core's
+  copy-on-write backend at 1.2% for MimicGen Coffee.
+- **End-to-end wall-clock is a tie.** MimicGen Coffee, 84×84, batch 64, three
+  seeds: torchcodec 326 ± 4 s, data-core 324 ± 1 s, within run-to-run noise.
+- **It holds for a VLA on a server GPU.** SmolVLA on LIBERO-10 keeps the GPU at
+  59 to 60% duty cycle with every backend, with or without augmentation. The
+  idle time comes from evaluation rollouts and host overhead, not data stalls.
+- **There is a hard ceiling.** By Amdahl's law, even an infinitely fast loader
+  can speed training up by at most 1 + r, which is 3.5% at the highest ratio we
+  measured.
 
-These are the scripts behind the runs in the paper. Each script's header says
-what it runs, which table it corresponds to, and what it needs. Run them from
-the repository root; they write to `outputs/` and `results/`, which are
-git-ignored.
+**Where data loading does hurt.** Unindexed video seeking. PyAV on AV1 video
+walks the stream sequentially, which left the GPU idle 83% of the time and made
+training 5.6× slower (15.1× at batch size 32). data-core avoids this class of
+problem by design: video is decoded once, and every later access is an indexed
+lookup into memory however the video was encoded, at the price of the up-front
+decode described below. (torchcodec, LeRobot's current default, also seeks by
+index, which is why it sits at 1.1%.)
 
-Datasets, pinned revisions and download commands are in
-[data/README.md](data/README.md). The scripts read the datasets from the
-Hugging Face cache by default; set `COFFEE_ROOT`, `ALOHA_ROOT`,
-`MIMICGEN_RAW_DIR` or `LIBERO10_ROOT` to use copies elsewhere.
+**Want an actual speed-up?** The paper points upstream, to the model's
+repeated visual-backbone pass. Caching frozen ResNet-18 features, with scripts
+in this repository, cut ACT training time by 1.3 to 1.5× compared with running
+the same frozen backbone online, and pooled features add a further 2.5× with a
+47.5× smaller cache. The cache is faithful (training L1
+0.0623 vs 0.0624 for the same frozen backbone run online), but this is a
+preliminary result: both the cached and the stock ACT policy scored 0/25 in
+closed-loop rollouts at this short training budget, so its effect on task
+success is not yet established.
 
-### LeRobot fork
+## Be aware
 
-The paper's `lerobot-train` runs on the data-core backends use a fork of LeRobot
-0.4.4, [PAIR-data-platform/lerobot](https://github.com/PAIR-data-platform/lerobot).
-Its `main` branch adds the dataset flags `--dataset.use_data_core`,
-`--dataset.preload_episodes` and `--dataset.data_core_aug_preset`, and a
-MimicGen environment for closed-loop evaluation. The branch
-`arpit/arrow-jpeg-on-main` is `main` plus the Arrow backend
-(`--dataset.use_data_core_arrow`), so checking it out covers every launcher.
-Install the fork in the same environment as `data_core`. Clone it next to
-`data-core-rs` rather than inside it:
+- **Up-front decode.** The copy-on-write cache decodes episodes before training
+  starts (about 50 s per 100 MimicGen Coffee episodes at 84×84). The wall-clock
+  numbers above exclude it.
+- **Preloaded episodes live in RAM.** An episode of `lerobot/aloha_static_coffee`
+  (4 cameras at 480×640) takes about 4 GB as raw pixels. Choose which episodes to
+  preload, use the JPEG cache, or use `LazyDataset` with a cache limit for data
+  that does not fit.
+- **CPU decoding on Linux.** Video is decoded with FFmpeg on the CPU; GPU
+  decoders such as NVDEC were not evaluated. The experiments are single-GPU, and
+  the paper notes that under-provisioned nodes, where GPU throughput outscales
+  CPU resources, could bring data-path bottlenecks back.
+- **Alpha software** (version 0.1.0). Expect rough edges, and please open an
+  issue when you find them.
 
-```bash
-cd ..   # from the data-core-rs checkout
-git clone https://github.com/PAIR-data-platform/lerobot.git
-git -C lerobot checkout arpit/arrow-jpeg-on-main   # needed only for the Arrow backend
-pip install -e "./lerobot[mimicgen]"
-# MimicGen task registrations for the rollout scripts
-git clone --branch v0.1.1 https://github.com/NVlabs/mimicgen.git
-pip install -e ./mimicgen   # pins mujoco==2.3.2, replacing the newer mujoco from the extra
-cd data-core-rs
-```
+## Measure your own run
 
-Scripts marked "fork" below need it; the others run on stock LeRobot or use
-`data_core` directly. The SmolVLA configuration additionally needs LeRobot's
-SmolVLA and LIBERO extras (`pip install -e "./lerobot[smolvla,libero]"`, or
-`pip install "lerobot[smolvla,libero]==0.4.4"` on stock LeRobot).
+The paper's metric needs nothing but numbers LeRobot already logs. `lerobot-train`
+reports `data_s` (time the trainer waits for a batch) and `updt_s` (time of the
+forward pass, backward pass and optimizer update). Drop the first two logged
+windows as warm-up, take the mean of each, and compute
 
-### `lerobot-train` launchers (`lerobot-scripts/`)
+> **r = data_s / updt_s**
 
-| Script | Run | Paper | Needs |
-|---|---|---|---|
-| `act_coffee_torchcodec.sh` | ACT on MimicGen Coffee, torchcodec | Tables 1, 3, 4 | stock LeRobot |
-| `act_coffee_torchcodec_aug.sh` | Same, with LeRobot image transforms | Table 4 | stock LeRobot |
-| `act_coffee_cow.sh` | Same, data-core copy-on-write cache | Tables 1, 3, 4 | fork |
-| `act_coffee_cow_aug.sh` | Same, with Rust `fused_image` augmentation | Table 4 | fork |
-| `act_coffee_arrow_jpeg.sh` | Same, data-core Arrow backend with a JPEG cache | Table 3 | fork (Arrow branch) |
-| `act_aloha_torchcodec.sh` | ACT on Aloha at 480x640, torchcodec | Table 1 | stock LeRobot |
-| `act_aloha_small.sh` | Smaller ACT on Aloha; Table 1 is `act_aloha_small.sh torchcodec 16` (Arrow JPEG is also available but not in the paper) | Table 1 | stock LeRobot (torchcodec), fork (Arrow branch) |
-| `smolvla_libero_10.yaml` | SmolVLA trained on `HuggingFaceVLA/libero`, evaluated on LIBERO-10 (the torchcodec row; add `--dataset.image_transforms.enable=true` for the +aug row) | Table 5 | stock LeRobot (rust rows: fork) |
-| `nvml_gpu_usage_wrapper.sh` | Wraps any command and logs GPU utilization through NVML | Table 5 | `nvidia-ml-py` |
+If r is under about 5%, no loader can buy you more than 5% wall-clock time, and
+your effort is better spent elsewhere. If it is large, you have found a real
+bottleneck, and the shared cache and indexed frame access are what to try. The
+[project page](https://pair-data-platform.github.io/data-core-rs/#calc) has a
+calculator that turns r and a loader speed-up into an expected training
+speed-up.
 
-`scripts/run_wallclock_seeds.sh` runs the torchcodec and copy-on-write Coffee
-launchers for seeds 42 to 44 and prints each run's training wall-clock
-(Table 3; needs the fork). The PyAV row of Table 1 is the torchcodec
-Coffee launcher with the decoder switched:
-`lerobot-scripts/act_coffee_torchcodec.sh --dataset.video_backend pyav`.
+## Learn more
 
-The data-path ratio r in Tables 1 and 4 is computed from the `data_s` and
-`updt_s` values that `lerobot-train` logs every 100 steps: drop the windows
-logged at steps 100 and 200 as warm-up, then divide the mean `data_s` by the
-mean `updt_s`.
-
-### Standalone scripts (`scripts/`)
-
-| Script | Purpose | Needs |
-|---|---|---|
-| `train_act_lerobot.py` | ACT training loop on `LeRobotDataset` | LeRobot |
-| `train_act_data_core.py` | The same loop on `data_core.LazyDataset`. With DataLoader workers it preloads every episode into RAM unless `--preload-episodes N` is given | LeRobot (policy only) |
-| `benchmark_lazy_dataset.py` | `LazyDataset` throughput for sequential, warm and cold random access | `data_core` |
-| `convert_mimicgen_hdf5_to_lerobot_v3.py` | Convert a MimicGen HDF5 file to LeRobot v3 | LeRobot, `h5py` |
-| `run_wallclock_seeds.sh` | Torchcodec and copy-on-write Coffee launchers for seeds 42 to 44; prints each run's training wall-clock (Table 3) | fork |
-| `dataset_paths.sh` | Default dataset locations and pinned revisions, sourced by the shell scripts | none |
-| `run_act_baseline_rollouts.sh` | Stock ACT on MimicGen Coffee (all 1000 episodes), 10k steps, with 25 closed-loop rollouts from randomly drawn initial states | fork (MimicGen env) |
-
-The rollout options (`--eval-*`) of the two training loops also need the
-fork's MimicGen environment.
-
-### Feature cache (`scripts/`, Table 6)
-
-These scripts precompute frozen ResNet-18 features once and train the ACT
-action head from the cache instead of running the backbone every step.
-
-| Script | Purpose | Needs |
-|---|---|---|
-| `build_feature_cache.py` | Run a frozen ResNet over a dataset and write one feature shard per episode | LeRobot |
-| `train_act_feature_cache.py` | Train the action head from cached features | PyTorch |
-| `train_act_frozen_online.py` | Baseline: the same model with features recomputed every step | LeRobot |
-| `run_feature_cache_seeds.sh` | Cached training on Coffee (map features) and Aloha (pooled features), seeds 42 to 44 | LeRobot |
-| `run_feature_cache_coffee.sh` | Build the Coffee cache, train for 10k steps, evaluate with rollouts | LeRobot; rollouts need the fork |
-| `run_feature_cache_rollouts.sh` | 25-rollout evaluation of that policy | fork (MimicGen env) |
-| `eval_feature_act_mimicgen.py`, `extract_mimicgen_init_states.py` | Rollout evaluation and deterministic initial states | evaluation: fork (MimicGen env), `scipy`; init states: `h5py` |
-
-Memory: with its default settings (4 workers, 4 cameras at 480x640), the Aloha
-cache build in `run_feature_cache_seeds.sh` needs more than 12 GB of RAM.
+| | |
+|---|---|
+| **[Installation and usage guide](GETTING_STARTED.md)** | Requirements, building, the Python API, LeRobot integration, tests, benchmarks, and the scripts that reproduce the paper |
+| **[Features and use cases](FEATURES.md)** | What each feature does, where it lives in the code, and when it fits |
+| **[Project page](https://pair-data-platform.github.io/data-core-rs/)** | The paper's findings with interactive charts and the speed-up calculator |
+| **[Paper](https://openreview.net/forum?id=Vv1WXMkSTD)** | *An Empirical Study of Data-Loading Bottlenecks (and Non-Bottlenecks) in Robotic Imitation Learning* |
+| **[LeRobot fork](https://github.com/PAIR-data-platform/lerobot)** | `lerobot-train` with data-core as a dataset backend |
+| **[Datasets](data/README.md)** | The pinned dataset revisions and download commands used in the paper |
+| **[Contributing](CONTRIBUTING.md)** | Development setup, tests and pull requests |
 
 ## Citation
+
+If data-core or the paper's findings are useful to your work, please cite
+
+> **An Empirical Study of Data-Loading Bottlenecks (and Non-Bottlenecks) in Robotic Imitation Learning**
+> Mrinal Jain, Arpit Gupta, Animesh Garg. Conference on Robot Learning (CoRL), 2026.
 
 ```bibtex
 @inproceedings{jain2026dataloading,
@@ -409,6 +238,10 @@ cache build in `run_feature_cache_seeds.sh` needs more than 12 GB of RAM.
   url       = {https://openreview.net/forum?id=Vv1WXMkSTD}
 }
 ```
+
+Authors are affiliated with the Georgia Institute of Technology (Jain, Garg) and
+General Motors (Gupta). Thanks to the members of the People, AI, and Robotics
+(PAIR) Lab for their insights and support.
 
 ## License
 
